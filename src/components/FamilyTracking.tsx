@@ -28,6 +28,7 @@ interface FamilyMember {
   status?: string
   isSharing: boolean
   avatar?: string
+  profilePicture?: string // Base64 encoded image
 }
 
 interface Place {
@@ -81,20 +82,26 @@ function RecenterButton({ position }: { position: [number, number] | null }) {
 }
 
 export default function FamilyTracking() {
+  const [showAvatarUpload, setShowAvatarUpload] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
     {
       id: '1',
       name: 'David',
       email: 'dyoung1946@gmail.com',
       isSharing: true,
-      status: 'At work'
+      status: 'At work',
+      profilePicture: localStorage.getItem('avatar_david') || undefined
     },
     {
       id: '2',
       name: 'Lisa',
       email: 'lisa.young@gmail.com', // UPDATE THIS TO LISA'S REAL EMAIL
       isSharing: true,
-      status: 'Home'
+      status: 'Home',
+      profilePicture: localStorage.getItem('avatar_lisa') || undefined
     }
   ])
 
@@ -102,9 +109,9 @@ export default function FamilyTracking() {
     {
       id: '1',
       name: 'Home',
-      address: '1808 Manning Ave Unit 202, Los Angeles, CA 90049',
-      lat: 34.0549,
-      lng: -118.4426,
+      address: 'Current Home Location',
+      lat: 34.0522,
+      lng: -118.2437,
       radius: 100,
       icon: '🏠',
       notifications: true
@@ -115,53 +122,64 @@ export default function FamilyTracking() {
   const [newMessage, setNewMessage] = useState('')
   const [myLocation, setMyLocation] = useState<GeolocationPosition | null>(null)
   const [selectedView, setSelectedView] = useState<'map' | 'list' | 'chat' | 'places'>('map')
-  const [isTracking, setIsTracking] = useState(false)
+  const [isTracking, setIsTracking] = useState(true) // Always tracking by default
   const [showAddPlace, setShowAddPlace] = useState(false)
   const [showSOS, setShowSOS] = useState(false)
   const watchId = useRef<number | null>(null)
 
+  // Check for avatar permission on first load
+  useEffect(() => {
+    const hasRequestedAvatars = localStorage.getItem('avatarsRequested')
+    if (!hasRequestedAvatars) {
+      setTimeout(() => {
+        const userConsent = window.confirm(
+          '📷 Would you like to add profile pictures for family members?\n\n' +
+          'This will help you quickly identify family members on the map.'
+        )
+        
+        localStorage.setItem('avatarsRequested', 'true')
+        if (userConsent) {
+          setShowAvatarUpload(true)
+          setSelectedMember('1') // Start with David
+        }
+      }, 2000)
+    }
+  }, [])
+
   // Auto-start tracking on component mount (like Life360)
   useEffect(() => {
     const initTracking = async () => {
-      // Check if user previously granted permission
-      const trackingEnabled = localStorage.getItem('trackingEnabled')
-      
-      if (trackingEnabled !== 'false') {
-        // Request permission and start tracking
-        if ('geolocation' in navigator && 'permissions' in navigator) {
-          try {
-            const permission = await navigator.permissions.query({ name: 'geolocation' })
+      // Always start tracking - permission was already requested at app start
+      if ('geolocation' in navigator) {
+        try {
+          const permission = await navigator.permissions.query({ name: 'geolocation' })
+          
+          if (permission.state === 'granted') {
+            // Permission already granted - start tracking immediately
+            startTracking()
+          } else if (permission.state === 'prompt') {
+            // Show custom prompt explaining why we need location
+            const userConsent = window.confirm(
+              '📍 Family Finance Hub needs your location to:\n\n' +
+              '• Show your location to family members\n' +
+              '• Send alerts when you arrive/leave places\n' +
+              '• Track family members safely\n\n' +
+              'Allow location tracking?'
+            )
             
-            if (permission.state === 'granted') {
-              // Permission already granted - start tracking immediately
+            if (userConsent) {
               startTracking()
-            } else if (permission.state === 'prompt') {
-              // Show custom prompt explaining why we need location
-              const userConsent = window.confirm(
-                '📍 Family Finance Hub needs your location to:\n\n' +
-                '• Show your location to family members\n' +
-                '• Send alerts when you arrive/leave places\n' +
-                '• Provide emergency SOS features\n\n' +
-                'Allow location tracking?'
-              )
-              
-              if (userConsent) {
-                startTracking()
-              } else {
-                localStorage.setItem('trackingEnabled', 'false')
-              }
             }
-          } catch (error) {
-            console.log('Permission API not supported, requesting directly')
-            startTracking() // This will trigger the browser's permission prompt
           }
+        } catch (error) {
+          console.log('Permission API not supported, requesting directly')
+          startTracking() // This will trigger the browser's permission prompt
         }
       }
     }
 
-    // Start tracking after component mounts
-    const timer = setTimeout(initTracking, 1000)
-    return () => clearTimeout(timer)
+    // Start tracking immediately on mount
+    initTracking()
   }, [])
 
   // Start enhanced location tracking with smart updates
@@ -199,6 +217,21 @@ export default function FamilyTracking() {
         (position) => {
           setMyLocation(position)
           updateMyLocation(position)
+          
+          // Update Home location to actual current location on first tracking
+          if (!localStorage.getItem('homeLocationSet')) {
+            setPlaces(prev => prev.map(place => 
+              place.name === 'Home' 
+                ? { 
+                    ...place, 
+                    lat: position.coords.latitude, 
+                    lng: position.coords.longitude,
+                    address: 'Your Home Location'
+                  }
+                : place
+            ))
+            localStorage.setItem('homeLocationSet', 'true')
+          }
         },
         (error) => {
           console.error('Location error:', error)
@@ -241,6 +274,23 @@ export default function FamilyTracking() {
     
     setFamilyMembers(prev => prev.map(member => {
       if (member.email === myEmail) {
+        // Check if at home
+        const homePlace = places.find(p => p.name === 'Home')
+        let newStatus = member.status
+        
+        if (homePlace) {
+          const distanceFromHome = calculateDistance(
+            position.coords.latitude,
+            position.coords.longitude,
+            homePlace.lat,
+            homePlace.lng
+          )
+          
+          if (distanceFromHome <= homePlace.radius) {
+            newStatus = '🏠 Home'
+          }
+        }
+        
         return {
           ...member,
           location: {
@@ -250,7 +300,8 @@ export default function FamilyTracking() {
             timestamp: new Date(position.timestamp),
             speed: position.coords.speed || undefined,
             battery: undefined // Battery API not available in TypeScript types
-          }
+          },
+          status: newStatus
         }
       }
       return member
@@ -360,32 +411,53 @@ export default function FamilyTracking() {
     if (memberWithLocation?.location) {
       return [memberWithLocation.location.lat, memberWithLocation.location.lng]
     }
-    // Last resort: Default to Los Angeles
-    return [34.0549, -118.4426]
+    // Don't default to Manning Ave - wait for real location
+    return [34.0522, -118.2437] // Downtown LA as neutral default
+  }
+
+  // Handle avatar upload
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file && selectedMember) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64String = reader.result as string
+        
+        // Find member and update their avatar
+        const member = familyMembers.find(m => m.id === selectedMember)
+        if (member) {
+          // Save to localStorage
+          localStorage.setItem(`avatar_${member.name.toLowerCase()}`, base64String)
+          
+          // Update state
+          setFamilyMembers(prev => prev.map(m => 
+            m.id === selectedMember 
+              ? { ...m, profilePicture: base64String }
+              : m
+          ))
+        }
+        
+        // Move to next member or close
+        if (selectedMember === '1') {
+          setSelectedMember('2')
+        } else {
+          setShowAvatarUpload(false)
+          setSelectedMember(null)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
   }
 
   return (
     <div className="family-tracking-container">
       <div className="tracking-header">
         <h2>👨‍👩‍👧 Family Tracking</h2>
-        <div className="tracking-controls">
-          {!isTracking ? (
-            <button onClick={startTracking} className="start-tracking-btn">
-              📍 Start Sharing Location
-            </button>
-          ) : (
-            <>
-              <button onClick={stopTracking} className="stop-tracking-btn">
-                ⏹️ Stop Sharing
-              </button>
-              <span className="tracking-status">
-                🟢 Live Tracking Active
-              </span>
-            </>
-          )}
-          <button onClick={() => setShowSOS(true)} className="sos-btn">
-            🆘 SOS
-          </button>
+        <div className="tracking-status-badge">
+          <span className="status-active">
+            <span className="pulse-dot"></span>
+            Live Tracking
+          </span>
         </div>
       </div>
 
@@ -495,8 +567,19 @@ export default function FamilyTracking() {
             {familyMembers.map(member => (
               <div key={member.id} className="family-member-card">
                 <div className="member-header">
-                  <div className="member-avatar">
-                    {member.name[0]}
+                  <div className="member-avatar" onClick={() => {
+                    if (!member.profilePicture) {
+                      setSelectedMember(member.id)
+                      setShowAvatarUpload(true)
+                    }
+                  }}>
+                    {member.profilePicture ? (
+                      <img src={member.profilePicture} alt={member.name} />
+                    ) : (
+                      <div className="avatar-placeholder">
+                        {member.name[0]}
+                      </div>
+                    )}
                   </div>
                   <div className="member-info">
                     <h3>{member.name}</h3>
@@ -662,26 +745,58 @@ export default function FamilyTracking() {
         )}
       </div>
 
-      {/* SOS Modal */}
-      {showSOS && (
-        <div className="modal-overlay" onClick={() => setShowSOS(false)}>
-          <div className="sos-modal" onClick={e => e.stopPropagation()}>
-            <h2>🆘 Send Emergency Alert?</h2>
-            <p>This will immediately notify all family members of your location and that you need help.</p>
-            <div className="sos-actions">
+      {/* Avatar Upload Modal */}
+      {showAvatarUpload && selectedMember && (
+        <div className="modal-overlay" onClick={() => setShowAvatarUpload(false)}>
+          <div className="avatar-modal" onClick={e => e.stopPropagation()}>
+            <h2>📷 Add Profile Picture</h2>
+            <p>Upload a photo for {familyMembers.find(m => m.id === selectedMember)?.name}</p>
+            
+            <div className="avatar-upload-area">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                style={{ display: 'none' }}
+              />
+              
               <button 
-                onClick={() => sendMessage('sos')}
-                className="confirm-sos"
+                onClick={() => fileInputRef.current?.click()}
+                className="upload-btn"
               >
-                Send SOS
+                📁 Choose Photo
               </button>
+              
               <button 
-                onClick={() => setShowSOS(false)}
-                className="cancel-sos"
+                onClick={() => {
+                  // Take photo with camera
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.accept = 'image/*'
+                  input.capture = 'user'
+                  input.onchange = (e) => handleAvatarUpload(e as any)
+                  input.click()
+                }}
+                className="camera-btn"
               >
-                Cancel
+                📸 Take Photo
               </button>
             </div>
+            
+            <button 
+              onClick={() => {
+                if (selectedMember === '1') {
+                  setSelectedMember('2')
+                } else {
+                  setShowAvatarUpload(false)
+                  setSelectedMember(null)
+                }
+              }}
+              className="skip-btn"
+            >
+              Skip
+            </button>
           </div>
         </div>
       )}

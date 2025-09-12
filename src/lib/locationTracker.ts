@@ -1,5 +1,5 @@
 // Enhanced Location Tracking with Background Support
-import { supabase } from './supabase'
+// import { supabase } from './supabase' // Commented until Supabase is configured
 
 interface LocationData {
   latitude: number
@@ -209,17 +209,17 @@ class LocationTracker {
         locationData.battery_level = Math.round(battery.level * 100)
       }
 
-      // Call Supabase function to update location
-      const { error } = await supabase.rpc('update_member_location', {
-        p_email: email,
-        p_latitude: locationData.latitude,
-        p_longitude: locationData.longitude,
-        p_accuracy: locationData.accuracy,
-        p_speed: locationData.speed,
-        p_battery: locationData.battery_level
-      })
+      // Call Supabase function to update location (disabled until configured)
+      // const { error } = await supabase.rpc('update_member_location', {
+      //   p_email: email,
+      //   p_latitude: locationData.latitude,
+      //   p_longitude: locationData.longitude,
+      //   p_accuracy: locationData.accuracy,
+      //   p_speed: locationData.speed,
+      //   p_battery: locationData.battery_level
+      // })
 
-      if (error) throw error
+      // if (error) throw error
 
       this.lastUpdate = now
       console.log('Location updated:', locationData)
@@ -235,14 +235,15 @@ class LocationTracker {
   // Check if user entered/left any geofenced areas
   private async checkGeofences(location: LocationData) {
     try {
-      // Get all places from database
-      const { data: places, error } = await supabase
-        .from('places')
-        .select('*')
-        .eq('notifications_enabled', true)
+      // Get all places from database (disabled until Supabase configured)
+      // const { data: places, error } = await supabase
+      //   .from('places')
+      //   .select('*')
+      //   .eq('notifications_enabled', true)
 
-      if (error) throw error
+      // if (error) throw error
 
+      const places: any[] = [] // Temporary empty array
       places?.forEach(place => {
         const distance = this.calculateDistance(
           location.latitude,
@@ -263,14 +264,14 @@ class LocationTracker {
   // Calculate distance between two points
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371e3 // Earth's radius in meters
-    const �1 = lat1 * Math.PI / 180
-    const �2 = lat2 * Math.PI / 180
-    const �� = (lat2 - lat1) * Math.PI / 180
-    const �� = (lon2 - lon1) * Math.PI / 180
+    const phi1 = lat1 * Math.PI / 180
+    const phi2 = lat2 * Math.PI / 180
+    const deltaPhi = (lat2 - lat1) * Math.PI / 180
+    const deltaLambda = (lon2 - lon1) * Math.PI / 180
 
-    const a = Math.sin(�� / 2) * Math.sin(�� / 2) +
-              Math.cos(�1) * Math.cos(�2) *
-              Math.sin(�� / 2) * Math.sin(�� / 2)
+    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
     return R * c // Distance in meters
