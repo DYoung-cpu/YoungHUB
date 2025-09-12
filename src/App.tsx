@@ -10,6 +10,17 @@ const ALLOWED_EMAILS = [
 ]
 
 function App() {
+  // TEMPORARY: Skip all auth for mobile testing
+  const isVercel = window.location.hostname.includes('vercel.app')
+  
+  if (isVercel) {
+    return (
+      <div className="app">
+        <Dashboard session={null as any} />
+      </div>
+    )
+  }
+
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -39,16 +50,6 @@ function App() {
       <div className="loading-container">
         <div className="spinner"></div>
         <p>Loading Family Finance Hub...</p>
-      </div>
-    )
-  }
-
-  // Bypass login for testing (remove this in production!)
-  // Skip login on Vercel deployment
-  if (window.location.hostname === 'young-hub.vercel.app') {
-    return (
-      <div className="app">
-        <Dashboard session={null as any} />
       </div>
     )
   }
