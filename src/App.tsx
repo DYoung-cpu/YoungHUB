@@ -44,14 +44,21 @@ function App() {
   }
 
   // Bypass login for testing (remove this in production!)
-  const bypassLogin = window.location.hostname !== 'localhost'
+  // Skip login on Vercel deployment
+  if (window.location.hostname === 'young-hub.vercel.app') {
+    return (
+      <div className="app">
+        <Dashboard session={null as any} />
+      </div>
+    )
+  }
   
   return (
     <div className="app">
-      {!session && !bypassLogin ? (
+      {!session ? (
         <LoginPage allowedEmails={ALLOWED_EMAILS} />
       ) : (
-        <Dashboard session={session!} />
+        <Dashboard session={session} />
       )}
     </div>
   )
