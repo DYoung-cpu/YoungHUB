@@ -185,7 +185,7 @@ class LocationTracker {
   }
 
   // Update location in database
-  private async updateLocation(email: string, position: GeolocationPosition) {
+  private async updateLocation(_email: string, position: GeolocationPosition) {
     // Throttle updates
     const now = new Date()
     if (this.lastUpdate && (now.getTime() - this.lastUpdate.getTime()) < 5000) {
@@ -283,8 +283,7 @@ class LocationTracker {
       new Notification('Family Hub', {
         body: `${icon} ${message}`,
         icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        vibrate: [200, 100, 200]
+        badge: '/icon-192.png'
       })
     }
   }

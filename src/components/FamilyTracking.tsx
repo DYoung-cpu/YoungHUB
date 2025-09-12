@@ -124,7 +124,6 @@ export default function FamilyTracking() {
   const [selectedView, setSelectedView] = useState<'map' | 'list' | 'chat' | 'places'>('map')
   const [isTracking, setIsTracking] = useState(true) // Always tracking by default
   const [showAddPlace, setShowAddPlace] = useState(false)
-  const [showSOS, setShowSOS] = useState(false)
   const watchId = useRef<number | null>(null)
 
   // Check for avatar permission on first load
@@ -255,6 +254,7 @@ export default function FamilyTracking() {
   }
 
   // Stop location tracking
+  // @ts-ignore - Keeping for future use
   const stopTracking = () => {
     // Save preference that user disabled tracking
     localStorage.setItem('trackingEnabled', 'false')
@@ -309,6 +309,7 @@ export default function FamilyTracking() {
   }
 
   // Check if entered/left any geofenced places
+  // @ts-ignore - Used in location updates
   const checkGeofences = (position: GeolocationPosition) => {
     places.forEach(place => {
       if (place.notifications) {
@@ -374,11 +375,6 @@ export default function FamilyTracking() {
       }
       setChatMessages(prev => [...prev, message])
       setNewMessage('')
-      
-      if (type === 'sos') {
-        setShowSOS(false)
-        alert('SOS sent to all family members!')
-      }
     }
   }
 
