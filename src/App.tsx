@@ -43,12 +43,15 @@ function App() {
     )
   }
 
+  // Bypass login for testing (remove this in production!)
+  const bypassLogin = window.location.hostname !== 'localhost'
+  
   return (
     <div className="app">
-      {!session ? (
+      {!session && !bypassLogin ? (
         <LoginPage allowedEmails={ALLOWED_EMAILS} />
       ) : (
-        <Dashboard session={session} />
+        <Dashboard session={session!} />
       )}
     </div>
   )
