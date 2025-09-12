@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet'
 import { formatDistanceToNow } from 'date-fns'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -47,6 +47,37 @@ interface ChatMessage {
   message: string
   timestamp: Date
   type: 'text' | 'location' | 'sos'
+}
+
+// Component to recenter map on current location
+function RecenterButton({ position }: { position: [number, number] | null }) {
+  const map = useMap()
+  
+  const handleRecenter = () => {
+    if (position) {
+      map.setView(position, 15)
+    }
+  }
+  
+  return (
+    <button 
+      onClick={handleRecenter}
+      style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        zIndex: 1000,
+        background: 'white',
+        border: '2px solid #667eea',
+        borderRadius: '8px',
+        padding: '8px 12px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+      }}
+    >
+      📍 My Location
+    </button>
+  )
 }
 
 export default function FamilyTracking() {
@@ -262,11 +293,16 @@ export default function FamilyTracking() {
 
   // Get center coordinates for map
   const getMapCenter = (): [number, number] => {
+    // First priority: Use my current location if tracking
+    if (myLocation) {
+      return [myLocation.coords.latitude, myLocation.coords.longitude]
+    }
+    // Second priority: Use any family member with location
     const memberWithLocation = familyMembers.find(m => m.location)
     if (memberWithLocation?.location) {
       return [memberWithLocation.location.lat, memberWithLocation.location.lng]
     }
-    // Default to Los Angeles
+    // Last resort: Default to Los Angeles
     return [34.0549, -118.4426]
   }
 
@@ -335,6 +371,11 @@ export default function FamilyTracking() {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              
+              {/* Recenter button */}
+              {myLocation && (
+                <RecenterButton position={[myLocation.coords.latitude, myLocation.coords.longitude]} />
+              )}
               
               {/* Family member markers */}
               {familyMembers.map(member => {
