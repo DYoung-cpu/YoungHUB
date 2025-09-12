@@ -2,14 +2,13 @@ import { useState } from 'react'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import Mortgages from '../components/Mortgages'
-import FamilyTracking from '../components/FamilyTracking'
 
 interface DashboardProps {
   session: Session
 }
 
 export default function Dashboard({ session }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState('tracking')
+  const [activeTab, setActiveTab] = useState('mortgages')
   
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -28,12 +27,6 @@ export default function Dashboard({ session }: DashboardProps) {
       </header>
 
       <nav className="dashboard-nav">
-        <button 
-          className={activeTab === 'tracking' ? 'active' : ''}
-          onClick={() => setActiveTab('tracking')}
-        >
-          📍 Tracking
-        </button>
         <button 
           className={activeTab === 'mortgages' ? 'active' : ''}
           onClick={() => setActiveTab('mortgages')}
@@ -73,12 +66,6 @@ export default function Dashboard({ session }: DashboardProps) {
       </nav>
 
       <main className="dashboard-content">
-        {activeTab === 'tracking' && (
-          <div className="tab-content">
-            <FamilyTracking />
-          </div>
-        )}
-
         {activeTab === 'mortgages' && (
           <div className="tab-content">
             <Mortgages />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-// import { supabase } from '../lib/supabase' // Will use when connected to database
+import { supabase } from '../lib/supabase'
 
 interface Property {
   id?: string
