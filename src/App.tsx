@@ -11,9 +11,11 @@ const ALLOWED_EMAILS = [
 
 function App() {
   // TEMPORARY: Skip all auth for mobile testing
-  const isVercel = window.location.hostname.includes('vercel.app')
+  const hostname = window.location.hostname
+  const isProduction = hostname !== 'localhost' && hostname !== '127.0.0.1'
   
-  if (isVercel) {
+  if (isProduction) {
+    console.log('Bypassing auth for production:', hostname)
     return (
       <div className="app">
         <Dashboard session={null as any} />
