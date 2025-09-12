@@ -120,10 +120,65 @@ export default function FamilyTracking() {
   const [showSOS, setShowSOS] = useState(false)
   const watchId = useRef<number | null>(null)
 
+  // Auto-start tracking on component mount (like Life360)
+  useEffect(() => {
+    const initTracking = async () => {
+      // Check if user previously granted permission
+      const trackingEnabled = localStorage.getItem('trackingEnabled')
+      
+      if (trackingEnabled !== 'false') {
+        // Request permission and start tracking
+        if ('geolocation' in navigator && 'permissions' in navigator) {
+          try {
+            const permission = await navigator.permissions.query({ name: 'geolocation' })
+            
+            if (permission.state === 'granted') {
+              // Permission already granted - start tracking immediately
+              startTracking()
+            } else if (permission.state === 'prompt') {
+              // Show custom prompt explaining why we need location
+              const userConsent = window.confirm(
+                '📍 Family Finance Hub needs your location to:\n\n' +
+                '• Show your location to family members\n' +
+                '• Send alerts when you arrive/leave places\n' +
+                '• Provide emergency SOS features\n\n' +
+                'Allow location tracking?'
+              )
+              
+              if (userConsent) {
+                startTracking()
+              } else {
+                localStorage.setItem('trackingEnabled', 'false')
+              }
+            }
+          } catch (error) {
+            console.log('Permission API not supported, requesting directly')
+            startTracking() // This will trigger the browser's permission prompt
+          }
+        }
+      }
+    }
+
+    // Start tracking after component mounts
+    const timer = setTimeout(initTracking, 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Start enhanced location tracking with smart updates
   const startTracking = async () => {
     if ('geolocation' in navigator) {
       setIsTracking(true)
+      
+      // Save preference
+      localStorage.setItem('trackingEnabled', 'true')
+      
+      // Get unique device ID (stored in localStorage)
+      let deviceId = localStorage.getItem('deviceId')
+      if (!deviceId) {
+        // Generate unique device ID for this phone/browser
+        deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        localStorage.setItem('deviceId', deviceId)
+      }
       
       // Use enhanced tracker for smart, battery-efficient updates
       const myEmail = 'dyoung1946@gmail.com' // This would come from auth
@@ -168,6 +223,9 @@ export default function FamilyTracking() {
 
   // Stop location tracking
   const stopTracking = () => {
+    // Save preference that user disabled tracking
+    localStorage.setItem('trackingEnabled', 'false')
+    
     locationTracker.stopTracking()
     if (watchId.current !== null) {
       navigator.geolocation.clearWatch(watchId.current)
