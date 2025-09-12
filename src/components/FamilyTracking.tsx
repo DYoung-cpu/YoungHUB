@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet'
 import { formatDistanceToNow } from 'date-fns'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { locationTracker } from '../lib/locationTracker'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -88,12 +89,26 @@ export default function FamilyTracking() {
   const [showSOS, setShowSOS] = useState(false)
   const watchId = useRef<number | null>(null)
 
-  // Start location tracking
-  const startTracking = () => {
+  // Start enhanced location tracking with smart updates
+  const startTracking = async () => {
     if ('geolocation' in navigator) {
       setIsTracking(true)
       
-      // Get initial position
+      // Use enhanced tracker for smart, battery-efficient updates
+      const myEmail = 'dyoung1946@gmail.com' // This would come from auth
+      const success = await locationTracker.startTracking(myEmail)
+      
+      if (!success) {
+        alert('Please enable location services')
+        setIsTracking(false)
+        return
+      }
+
+      // Get tracking status
+      const status = locationTracker.getStatus()
+      console.log('Tracking status:', status)
+      
+      // Also update local state for immediate UI feedback
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setMyLocation(position)
@@ -101,7 +116,6 @@ export default function FamilyTracking() {
         },
         (error) => {
           console.error('Location error:', error)
-          alert('Please enable location services')
         },
         {
           enableHighAccuracy: true,
@@ -110,20 +124,12 @@ export default function FamilyTracking() {
         }
       )
 
-      // Watch position for updates
-      watchId.current = navigator.geolocation.watchPosition(
-        (position) => {
-          setMyLocation(position)
-          updateMyLocation(position)
-          checkGeofences(position)
-        },
-        (error) => console.error('Watch error:', error),
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
-        }
-      )
+      // Show tracking mode notification
+      if (status.hasServiceWorker) {
+        showNotification('📍 Background tracking active - works when app is closed!')
+      } else {
+        showNotification('📍 Location tracking started')
+      }
     } else {
       alert('Geolocation is not supported by your browser')
     }
@@ -131,11 +137,13 @@ export default function FamilyTracking() {
 
   // Stop location tracking
   const stopTracking = () => {
+    locationTracker.stopTracking()
     if (watchId.current !== null) {
       navigator.geolocation.clearWatch(watchId.current)
       watchId.current = null
     }
     setIsTracking(false)
+    showNotification('📍 Location tracking stopped')
   }
 
   // Update my location in the family members list
@@ -272,9 +280,14 @@ export default function FamilyTracking() {
               📍 Start Sharing Location
             </button>
           ) : (
-            <button onClick={stopTracking} className="stop-tracking-btn">
-              ⏹️ Stop Sharing
-            </button>
+            <>
+              <button onClick={stopTracking} className="stop-tracking-btn">
+                ⏹️ Stop Sharing
+              </button>
+              <span className="tracking-status">
+                🟢 Live Tracking Active
+              </span>
+            </>
           )}
           <button onClick={() => setShowSOS(true)} className="sos-btn">
             🆘 SOS

@@ -727,6 +727,17 @@ textarea {
 .tracking-controls {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.tracking-status {
+  padding: 8px 12px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  animation: pulse 2s infinite;
 }
 
 .start-tracking-btn,

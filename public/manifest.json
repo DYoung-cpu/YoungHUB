@@ -20,5 +20,10 @@
   "display": "standalone",
   "theme_color": "#667eea",
   "background_color": "#ffffff",
-  "orientation": "portrait"
+  "orientation": "portrait",
+  "permissions": [
+    "geolocation",
+    "notifications",
+    "background-sync"
+  ]
 }
