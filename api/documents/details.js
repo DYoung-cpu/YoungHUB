@@ -26,10 +26,10 @@ module.exports = async (req, res) => {
     // Get signed URLs for storage files
     const docsWithUrls = await Promise.all(documents.map(async (doc) => {
       let signedUrl = null;
-      if (doc.storage_path) {
+      if (doc.file_path) {
         const { data, error: urlError } = await supabase.storage
-          .from('documents')
-          .createSignedUrl(doc.storage_path, 3600); // 1 hour expiry
+          .from('family-vault')
+          .createSignedUrl(doc.file_path, 3600); // 1 hour expiry
         if (!urlError) {
           signedUrl = data.signedUrl;
         }
