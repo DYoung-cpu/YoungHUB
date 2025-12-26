@@ -93,7 +93,7 @@ Extracted Data: ${JSON.stringify(doc.extracted_data || {})}
 
     // Call Claude for Q&A
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
       system: `You are Family Vault AI, an intelligent assistant for the Young family's financial document management system.
 
