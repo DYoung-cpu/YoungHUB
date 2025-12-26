@@ -211,6 +211,7 @@ Answer the user's question with specific details from the document including exa
   }
 }
 
+// v2 - with debug fields
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
