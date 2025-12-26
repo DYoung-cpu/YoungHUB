@@ -3,16 +3,52 @@ import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import Mortgages from '../components/Mortgages'
 import FamilyTracking from '../components/FamilyTracking'
+import { DocumentUploader, DocumentViewer, DocumentSearch, FamilyCalendar, VaultChat, UrgentItems } from '../components/vault'
+
+interface Document {
+  id: string
+  filename: string
+  original_filename: string
+  file_path: string
+  file_type: string
+  file_size: number
+  category: string
+  subcategory?: string
+  tags?: string[]
+  property_address?: string
+  provider?: string
+  summary?: string
+  due_date?: string
+  created_at: string
+}
 
 interface DashboardProps {
-  session: Session
+  session: Session | null
 }
 
 export default function Dashboard({ session }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState('tracking')
-  
+  const [activeTab, setActiveTab] = useState('documents')
+  const [showUploader, setShowUploader] = useState(false)
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
+  }
+
+  const userName = session?.user?.email?.split('@')[0] || 'Guest'
+
+  const handleDocumentSelect = (doc: Document) => {
+    setSelectedDocument(doc)
+  }
+
+  const handleUploadComplete = () => {
+    setShowUploader(false)
+    // Refresh will happen via component re-render
+  }
+
+  const getDocumentUrl = (filePath: string): string => {
+    const { data } = supabase.storage.from('family-vault').getPublicUrl(filePath)
+    return data.publicUrl
   }
 
   return (
@@ -21,7 +57,7 @@ export default function Dashboard({ session }: DashboardProps) {
         <div className="header-content">
           <h1>Family Finance Hub</h1>
           <div className="user-info">
-            <span>Welcome, {session.user.email?.split('@')[0]}</span>
+            <span>Welcome, {userName}</span>
             <button onClick={handleSignOut} className="sign-out-btn">Sign Out</button>
           </div>
         </div>
@@ -64,11 +100,17 @@ export default function Dashboard({ session }: DashboardProps) {
         >
           💰 Expenses
         </button>
-        <button 
+        <button
           className={activeTab === 'calendar' ? 'active' : ''}
           onClick={() => setActiveTab('calendar')}
         >
           📅 Calendar
+        </button>
+        <button
+          className={activeTab === 'ask' ? 'active' : ''}
+          onClick={() => setActiveTab('ask')}
+        >
+          🤖 Ask Vault
         </button>
       </nav>
 
@@ -89,43 +131,65 @@ export default function Dashboard({ session }: DashboardProps) {
           <div className="tab-content">
             <h2>Overview</h2>
             <div className="overview-grid">
-              <div className="overview-card">
-                <h3>Recent Documents</h3>
-                <p>No documents uploaded yet</p>
+              <div className="overview-card urgent-card">
+                <UrgentItems onDocumentClick={(docId) => {
+                  setActiveTab('documents')
+                }} />
               </div>
-              <div className="overview-card">
-                <h3>Upcoming Bills</h3>
-                <p>No bills scheduled</p>
-              </div>
-              <div className="overview-card">
-                <h3>Account Summary</h3>
-                <p>Add your accounts to get started</p>
+              <div className="overview-card chat-card">
+                <VaultChat onDocumentClick={(docId) => {
+                  setActiveTab('documents')
+                }} />
               </div>
               <div className="overview-card">
                 <h3>Quick Actions</h3>
-                <button className="action-btn">📤 Upload Document</button>
-                <button className="action-btn">➕ Add Account</button>
+                <button className="action-btn" onClick={() => setActiveTab('documents')}>📁 View Documents</button>
+                <button className="action-btn" onClick={() => setActiveTab('ask')}>🤖 Ask Vault AI</button>
+                <button className="action-btn" onClick={() => setActiveTab('calendar')}>📅 Calendar</button>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'documents' && (
-          <div className="tab-content">
-            <h2>Documents</h2>
-            <div className="document-upload">
-              <div className="upload-area">
-                <svg className="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <p>Drag and drop files here, or click to browse</p>
-                <input type="file" className="file-input" multiple />
+          <div className="tab-content documents-tab">
+            <div className="documents-header">
+              <h2>Family Vault</h2>
+              <button
+                className="upload-btn"
+                onClick={() => setShowUploader(true)}
+              >
+                📤 Upload Document
+              </button>
+            </div>
+            <DocumentSearch onDocumentSelect={handleDocumentSelect} />
+
+            {/* Upload Modal */}
+            {showUploader && (
+              <div className="modal-overlay" onClick={() => setShowUploader(false)}>
+                <div className="modal-content upload-modal" onClick={e => e.stopPropagation()}>
+                  <button className="modal-close" onClick={() => setShowUploader(false)}>✕</button>
+                  <DocumentUploader onUploadComplete={handleUploadComplete} />
+                </div>
               </div>
-            </div>
-            <div className="document-list">
-              <h3>Your Documents</h3>
-              <p>No documents uploaded yet</p>
-            </div>
+            )}
+
+            {/* Document Viewer Modal */}
+            {selectedDocument && (
+              <DocumentViewer
+                fileUrl={getDocumentUrl(selectedDocument.file_path)}
+                fileType={selectedDocument.file_type}
+                filename={selectedDocument.original_filename || selectedDocument.filename}
+                onClose={() => setSelectedDocument(null)}
+                metadata={{
+                  category: selectedDocument.category,
+                  property_address: selectedDocument.property_address,
+                  tags: selectedDocument.tags,
+                  due_date: selectedDocument.due_date,
+                  summary: selectedDocument.summary,
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -150,11 +214,24 @@ export default function Dashboard({ session }: DashboardProps) {
         )}
 
         {activeTab === 'calendar' && (
-          <div className="tab-content">
-            <h2>Important Dates</h2>
-            <button className="add-event-btn">➕ Add Event</button>
-            <div className="calendar-view">
-              <p>No events scheduled</p>
+          <div className="tab-content calendar-tab">
+            <FamilyCalendar />
+          </div>
+        )}
+
+        {activeTab === 'ask' && (
+          <div className="tab-content ask-tab">
+            <div className="ask-layout">
+              <div className="ask-main">
+                <VaultChat onDocumentClick={(docId) => {
+                  setActiveTab('documents')
+                }} />
+              </div>
+              <div className="ask-sidebar">
+                <UrgentItems onDocumentClick={(docId) => {
+                  setActiveTab('documents')
+                }} />
+              </div>
             </div>
           </div>
         )}

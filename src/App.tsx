@@ -10,59 +10,11 @@ const ALLOWED_EMAILS = [
 ]
 
 function App() {
-  // TEMPORARY: Skip all auth for mobile testing
-  const hostname = window.location.hostname
-  const isProduction = hostname !== 'localhost' && hostname !== '127.0.0.1'
-  
-  if (isProduction) {
-    console.log('Bypassing auth for production:', hostname)
-    return (
-      <div className="app">
-        <Dashboard session={null as any} />
-      </div>
-    )
-  }
-
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && ALLOWED_EMAILS.includes(session.user.email || '')) {
-        setSession(session)
-      }
-      setLoading(false)
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session && ALLOWED_EMAILS.includes(session.user.email || '')) {
-        setSession(session)
-      } else {
-        setSession(null)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="spinner"></div>
-        <p>Loading Family Finance Hub...</p>
-      </div>
-    )
-  }
-  
+  // TEMPORARY: Bypass auth entirely for local development and production
+  console.log('Bypassing auth for development/testing')
   return (
     <div className="app">
-      {!session ? (
-        <LoginPage allowedEmails={ALLOWED_EMAILS} />
-      ) : (
-        <Dashboard session={session} />
-      )}
+      <Dashboard session={null as any} />
     </div>
   )
 }

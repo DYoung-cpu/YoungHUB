@@ -63,23 +63,76 @@ self.addEventListener('periodicsync', event => {
   }
 });
 
-// Push notification support
+// Push notification support - handles server-sent push notifications
 self.addEventListener('push', event => {
-  const options = {
-    body: event.data ? event.data.text() : 'Location update',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    vibrate: [200, 100, 200],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
+  let data = {
+    title: 'Family Vault',
+    body: 'You have a new notification',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: 'default',
+    data: {}
+  };
+
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const payload = event.data.json();
+      data = {
+        title: payload.title || data.title,
+        body: payload.body || data.body,
+        icon: payload.icon || data.icon,
+        badge: payload.badge || data.badge,
+        tag: payload.tag || data.tag,
+        data: payload.data || {}
+      };
+    } catch (e) {
+      // If not JSON, use as plain text
+      data.body = event.data.text();
     }
+  }
+
+  const options = {
+    body: data.body,
+    icon: data.icon,
+    badge: data.badge,
+    vibrate: [200, 100, 200],
+    tag: data.tag,
+    renotify: true,
+    data: data.data,
+    actions: getNotificationActions(data.data.category)
   };
 
   event.waitUntil(
-    self.registration.showNotification('Family Hub', options)
+    self.registration.showNotification(data.title, options)
   );
 });
+
+// Get appropriate actions based on notification category
+function getNotificationActions(category) {
+  switch (category) {
+    case 'bill_reminder':
+      return [
+        { action: 'view', title: 'View Document' },
+        { action: 'snooze', title: 'Remind Later' }
+      ];
+    case 'calendar_update':
+      return [
+        { action: 'view', title: 'View Calendar' },
+        { action: 'dismiss', title: 'Dismiss' }
+      ];
+    case 'urgent_item':
+      return [
+        { action: 'view', title: 'Take Action' },
+        { action: 'dismiss', title: 'Dismiss' }
+      ];
+    default:
+      return [
+        { action: 'view', title: 'Open App' },
+        { action: 'dismiss', title: 'Dismiss' }
+      ];
+  }
+}
 
 // Send location update to server
 async function sendLocationUpdate() {
@@ -155,11 +208,97 @@ self.addEventListener('message', event => {
       });
     }
   }
-  
+
   if (event.data && event.data.type === 'STOP_TRACKING') {
     // Stop tracking
     if ('periodicSync' in self.registration) {
       self.registration.periodicSync.unregister('track-location');
     }
   }
+
+  // Calendar update notification
+  if (event.data && event.data.type === 'CALENDAR_UPDATE') {
+    const { memberName, eventType, dates, action } = event.data;
+
+    const eventIcons = {
+      office: '🏢',
+      wfh: '🏠',
+      vacation: '🏖️',
+      appointment: '📅',
+      bill_due: '💰'
+    };
+
+    const icon = eventIcons[eventType] || '📅';
+    const actionText = action === 'INSERT' ? 'added' : 'updated';
+
+    const options = {
+      body: `${memberName} ${actionText}: ${icon} ${eventType} on ${dates}`,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      vibrate: [200, 100, 200],
+      tag: 'calendar-update',
+      renotify: true,
+      data: {
+        type: 'calendar',
+        memberName,
+        eventType,
+        dates
+      },
+      actions: [
+        { action: 'view', title: 'View Calendar' },
+        { action: 'dismiss', title: 'Dismiss' }
+      ]
+    };
+
+    self.registration.showNotification('Family Calendar Updated', options);
+  }
+});
+
+// Handle notification clicks
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+
+  // Handle snooze action
+  if (event.action === 'snooze') {
+    // Could implement snooze logic here
+    return;
+  }
+
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  // Determine where to navigate based on notification data
+  let targetUrl = '/';
+  const data = event.notification.data || {};
+
+  if (data.category === 'bill_reminder' || data.documentId) {
+    targetUrl = '/?tab=documents';
+  } else if (data.category === 'calendar_update' || data.calendarEventId) {
+    targetUrl = '/?tab=calendar';
+  } else if (data.category === 'urgent_item') {
+    targetUrl = '/?tab=overview';
+  } else if (data.url) {
+    targetUrl = data.url;
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clientList => {
+        // If app is already open, focus it and navigate
+        for (const client of clientList) {
+          if ((client.url.includes('localhost') || client.url.includes('vercel.app')) && 'focus' in client) {
+            client.postMessage({
+              type: 'NOTIFICATION_CLICK',
+              data: data
+            });
+            return client.focus();
+          }
+        }
+        // Otherwise open new window
+        if (clients.openWindow) {
+          return clients.openWindow(targetUrl);
+        }
+      })
+  );
 });
