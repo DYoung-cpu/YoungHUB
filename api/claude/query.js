@@ -68,9 +68,43 @@ function needsDocumentAnalysis(question) {
   return ANALYSIS_KEYWORDS.some(keyword => lowerQ.includes(keyword));
 }
 
+// Helper function to find document mentioned in text
+function findDocumentMentionedIn(text, documents) {
+  const lowerText = text.toLowerCase();
+
+  for (const doc of documents) {
+    // Check if document filename is mentioned
+    if (doc.filename && lowerText.includes(doc.filename.toLowerCase().replace('.pdf', ''))) {
+      return doc;
+    }
+    // Check provider name
+    if (doc.provider && lowerText.includes(doc.provider.toLowerCase())) {
+      return doc;
+    }
+  }
+  return null;
+}
+
 // Helper function to find the best matching document for a question
-function findBestDocument(question, documents) {
+function findBestDocument(question, documents, conversationHistory) {
   const lowerQ = question.toLowerCase();
+
+  // Check if question uses pronouns that need resolution from conversation history
+  const pronounPatterns = /\b(it|this|that|the document|the bill|the statement|the file)\b/i;
+
+  if (pronounPatterns.test(question) && conversationHistory?.length > 0) {
+    console.log('Detected pronoun in question, searching conversation history');
+    // Search previous messages (reverse order - most recent first)
+    const recentMessages = conversationHistory.slice(-6);
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const msg = recentMessages[i];
+      const docMatch = findDocumentMentionedIn(msg.content, documents);
+      if (docMatch) {
+        console.log(`Found document from history: ${docMatch.filename}`);
+        return docMatch;
+      }
+    }
+  }
 
   // Score each document based on keyword matches
   const scored = documents.map(doc => {
@@ -173,10 +207,15 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { question } = req.body;
+    const { question, conversation_history } = req.body;
 
     if (!question) {
       return res.status(400).json({ error: 'No question provided' });
+    }
+
+    // Log conversation history for debugging
+    if (conversation_history?.length > 0) {
+      console.log(`Received ${conversation_history.length} messages in conversation history`);
     }
 
     // Fetch relevant documents from Supabase
@@ -191,7 +230,8 @@ module.exports = async (req, res) => {
     let analyzedDoc = null;
 
     if (needsDocumentAnalysis(question) && documents?.length > 0) {
-      analyzedDoc = findBestDocument(question, documents);
+      // Pass conversation history to help resolve pronouns like "it", "that", etc.
+      analyzedDoc = findBestDocument(question, documents, conversation_history);
       if (analyzedDoc) {
         console.log(`Analyzing document: ${analyzedDoc.filename}`);
         documentAnalysis = await analyzeDocument(analyzedDoc, question);
@@ -250,7 +290,27 @@ User Question: ${question}
 
 Please answer the question based on the documents and context provided. Be specific and cite document names or account numbers when relevant.`;
 
-    // Call Claude for Q&A
+    // Build multi-turn messages array with conversation history
+    let claudeMessages = [];
+
+    // Add conversation history if provided (for context on follow-up questions)
+    if (conversation_history && conversation_history.length > 0) {
+      // Add previous exchanges
+      for (const msg of conversation_history) {
+        claudeMessages.push({
+          role: msg.role,
+          content: msg.content
+        });
+      }
+    }
+
+    // Add the current message with document context
+    claudeMessages.push({
+      role: 'user',
+      content: userMessage,
+    });
+
+    // Call Claude for Q&A with full conversation context
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
@@ -273,13 +333,9 @@ IMPORTANT GUIDELINES:
 4. If the question is ambiguous (e.g., "who is my mortgage servicer"), provide a complete list of all servicers for all properties rather than picking one.
 5. Format currency as $X,XXX.XX and dates as Month Day, Year.
 6. If you don't have information to answer a question, say so clearly.
-7. When you have detailed document analysis available (marked with "DETAILED DOCUMENT ANALYSIS"), use that information to provide specific answers about document contents, usage breakdowns, rate tiers, itemized charges, and comparisons.`,
-      messages: [
-        {
-          role: 'user',
-          content: userMessage,
-        },
-      ],
+7. When you have detailed document analysis available (marked with "DETAILED DOCUMENT ANALYSIS"), use that information to provide specific answers about document contents, usage breakdowns, rate tiers, itemized charges, and comparisons.
+8. You have access to previous messages in this conversation. When the user says "it", "that", "the document", etc., refer to the context from previous messages to understand what they mean.`,
+      messages: claudeMessages,
     });
 
     const textContent = response.content.find(c => c.type === 'text');

@@ -60,10 +60,19 @@ Try asking me:
     setIsLoading(true);
 
     try {
+      // Send conversation history for context (last 10 messages to stay within limits)
+      const conversationHistory = messages.slice(-10).map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
       const response = await fetch('/api/claude/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMessage.content }),
+        body: JSON.stringify({
+          question: userMessage.content,
+          conversation_history: conversationHistory
+        }),
       });
 
       if (!response.ok) {
