@@ -141,12 +141,17 @@ function findBestDocument(question, documents, conversationHistory) {
 
 // Helper function to analyze a document with Claude Vision
 async function analyzeDocument(doc, question) {
+  console.log('analyzeDocument called for:', doc.filename);
+  console.log('file_path:', doc.file_path);
+
   if (!doc.file_path) {
+    console.log('No file_path - cannot analyze');
     return null;
   }
 
   try {
     // Download the file from Supabase Storage
+    console.log('Downloading from family-vault:', doc.file_path);
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('family-vault')
       .download(doc.file_path);
@@ -155,6 +160,7 @@ async function analyzeDocument(doc, question) {
       console.error('Failed to download document:', downloadError);
       return null;
     }
+    console.log('Download successful, file size:', fileData.size);
 
     // Convert to base64
     const arrayBuffer = await fileData.arrayBuffer();
@@ -167,6 +173,7 @@ async function analyzeDocument(doc, question) {
     }
 
     // Call Claude with vision
+    console.log('Calling Claude Vision API...');
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
@@ -192,11 +199,14 @@ Answer the user's question with specific details from the document including exa
         },
       ],
     });
+    console.log('Claude Vision response received');
 
     const textContent = response.content.find(c => c.type === 'text');
+    console.log('Analysis result length:', textContent?.text?.length || 0);
     return textContent?.text || null;
   } catch (error) {
-    console.error('Document analysis error:', error);
+    console.error('Document analysis error:', error.message);
+    console.error('Full error:', JSON.stringify(error, null, 2));
     return null;
   }
 }
@@ -228,14 +238,31 @@ module.exports = async (req, res) => {
     // Check if this question needs deep document analysis
     let documentAnalysis = null;
     let analyzedDoc = null;
+    let analysisAttempted = false;
+    let analysisError = null;
 
     if (needsDocumentAnalysis(question) && documents?.length > 0) {
+      console.log('Document analysis triggered for:', question);
       // Pass conversation history to help resolve pronouns like "it", "that", etc.
       analyzedDoc = findBestDocument(question, documents, conversation_history);
       if (analyzedDoc) {
-        console.log(`Analyzing document: ${analyzedDoc.filename}`);
-        documentAnalysis = await analyzeDocument(analyzedDoc, question);
+        console.log(`Found document to analyze: ${analyzedDoc.filename}`);
+        analysisAttempted = true;
+        try {
+          documentAnalysis = await analyzeDocument(analyzedDoc, question);
+          if (!documentAnalysis) {
+            analysisError = 'analyzeDocument returned null';
+          }
+        } catch (e) {
+          analysisError = e.message;
+          console.error('Analysis error:', e);
+        }
+      } else {
+        console.log('No matching document found for analysis');
+        analysisError = 'No document matched the query';
       }
+    } else {
+      console.log('Document analysis not triggered. Keywords matched:', needsDocumentAnalysis(question));
     }
 
     if (dbError) {
@@ -371,8 +398,16 @@ IMPORTANT GUIDELINES:
       document_analyzed: analyzedDoc ? {
         id: analyzedDoc.id,
         filename: analyzedDoc.filename,
-        analyzed: true
+        analyzed: !!documentAnalysis,
+        analysis_attempted: analysisAttempted,
+        analysis_error: analysisError
       } : null,
+      debug: {
+        analysis_triggered: needsDocumentAnalysis(question),
+        analysis_attempted: analysisAttempted,
+        analysis_error: analysisError,
+        conversation_history_length: conversation_history?.length || 0
+      },
       relevant_documents: relevantDocs.map(d => ({
         id: d.id,
         filename: d.filename,
