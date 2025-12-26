@@ -283,7 +283,34 @@ Lisa can tap dates to mark Office/WFH. When saved:
 
 ---
 
-## SESSION STATUS (Last Updated: December 25, 2024)
+## SESSION STATUS (Last Updated: December 25, 2024 - 10:00 PM)
+
+### CURRENT ISSUE TO FIX
+The `/api/claude/query` endpoint returns 500 error. Likely cause:
+- **Supabase API keys**: New format (`sb_publishable_`, `sb_secret_`) may not work with supabase-js
+- **Need to get LEGACY keys** from: https://supabase.com/dashboard/project/fnfwaqugiwspnyjtribf/settings/api
+  - Look for "Legacy anon, service_role API keys" section
+  - Update `VITE_SUPABASE_ANON_KEY` in Vercel with legacy anon key (JWT format)
+  - Update `SUPABASE_SERVICE_KEY` in Vercel with legacy service_role key (JWT format)
+- **Then check Vercel Runtime Logs** to see actual error message
+
+### Vercel Environment Variables (Current)
+| Variable | Status |
+|----------|--------|
+| VITE_SUPABASE_URL | ✅ Set to fnfwaqugiwspnyjtribf |
+| VITE_SUPABASE_ANON_KEY | ⚠️ May need legacy JWT format |
+| SUPABASE_URL | ✅ Set |
+| SUPABASE_SERVICE_KEY | ⚠️ May need legacy JWT format |
+| ANTHROPIC_API_KEY | ✅ Set |
+| VAPID_PUBLIC_KEY | ✅ Set |
+| VAPID_PRIVATE_KEY | ✅ Set |
+| VAPID_SUBJECT | ✅ Set |
+
+### Deployed & Working
+- App URL: https://young-hub.vercel.app
+- Vercel Project: https://vercel.com/david-youngs-projects-94a06a35/young-hub
+- All tabs load correctly
+- VaultChat UI works (but API returns 500)
 
 ### Sprint 1-3 COMPLETED
 
