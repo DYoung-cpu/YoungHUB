@@ -283,34 +283,25 @@ Lisa can tap dates to mark Office/WFH. When saved:
 
 ---
 
-## SESSION STATUS (Last Updated: December 25, 2024 - 10:00 PM)
+## SESSION STATUS (Last Updated: December 26, 2024)
 
-### CURRENT ISSUE TO FIX
-The `/api/claude/query` endpoint returns 500 error. Likely cause:
-- **Supabase API keys**: New format (`sb_publishable_`, `sb_secret_`) may not work with supabase-js
-- **Need to get LEGACY keys** from: https://supabase.com/dashboard/project/fnfwaqugiwspnyjtribf/settings/api
-  - Look for "Legacy anon, service_role API keys" section
-  - Update `VITE_SUPABASE_ANON_KEY` in Vercel with legacy anon key (JWT format)
-  - Update `SUPABASE_SERVICE_KEY` in Vercel with legacy service_role key (JWT format)
-- **Then check Vercel Runtime Logs** to see actual error message
+### All Systems Operational
+- App URL: https://young-hub.vercel.app
+- Vercel Project: https://vercel.com/david-youngs-projects-94a06a35/young-hub
+- VaultChat Q&A with Claude: **WORKING**
+- Document Analysis with Vision: **WORKING**
 
-### Vercel Environment Variables (Current)
+### Vercel Environment Variables
 | Variable | Status |
 |----------|--------|
-| VITE_SUPABASE_URL | ✅ Set to fnfwaqugiwspnyjtribf |
-| VITE_SUPABASE_ANON_KEY | ⚠️ May need legacy JWT format |
+| VITE_SUPABASE_URL | ✅ Set |
+| VITE_SUPABASE_ANON_KEY | ✅ Set |
 | SUPABASE_URL | ✅ Set |
-| SUPABASE_SERVICE_KEY | ⚠️ May need legacy JWT format |
+| SUPABASE_SERVICE_KEY | ✅ Set |
 | ANTHROPIC_API_KEY | ✅ Set |
 | VAPID_PUBLIC_KEY | ✅ Set |
 | VAPID_PRIVATE_KEY | ✅ Set |
 | VAPID_SUBJECT | ✅ Set |
-
-### Deployed & Working
-- App URL: https://young-hub.vercel.app
-- Vercel Project: https://vercel.com/david-youngs-projects-94a06a35/young-hub
-- All tabs load correctly
-- VaultChat UI works (but API returns 500)
 
 ### Sprint 1-3 COMPLETED
 
@@ -354,15 +345,32 @@ The `/api/claude/query` endpoint returns 500 error. Likely cause:
 - **Supabase**: Database + Storage fully operational
 - **Dev server**: `npm run dev` at http://localhost:5173/
 
-### API Endpoints Created (Sprint 3)
+### API Endpoints Created
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /api/claude/parse` | AI document parsing with vision |
-| `POST /api/claude/query` | Natural language Q&A with RAG |
+| `POST /api/claude/query` | Natural language Q&A with RAG + **auto document analysis** |
+| `POST /api/documents/analyze` | Deep PDF content analysis with Claude Vision |
+| `GET /api/documents/list` | List all documents with metadata |
+| `POST /api/documents/cleanup` | Find/remove duplicates, sync file paths |
+| `GET /api/documents/details` | Get document details + signed download URL |
 | `POST /api/notifications/push` | Send web push notifications |
 | `GET/POST/DELETE /api/notifications/subscribe` | Manage push subscriptions |
 | `POST /api/notifications/email` | Send email via Gmail API |
 | `GET /api/cron/check-due-dates` | Daily due date checker (Vercel Cron) |
+
+### Document Analysis Capability (NEW - Dec 26)
+The VaultChat agent can now **read PDF contents** using Claude Vision:
+- Auto-detects when user asks for analysis (keywords: analyze, breakdown, details, usage, etc.)
+- Downloads PDF from Supabase Storage, converts to base64
+- Sends to Claude Vision for detailed content extraction
+- Returns usage breakdowns, rate tiers, itemized charges, etc.
+
+**Example queries now supported:**
+- "Analyze my electric bill - what's using the most power?"
+- "Show me the breakdown of charges on the LADWP bill"
+- "What are the rate tiers on my utility bill?"
+- "Review the mortgage statement details"
 
 ### Environment Variables Needed
 ```env
