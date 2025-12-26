@@ -1,31 +1,10 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import Anthropic from '@anthropic-ai/sdk';
+const Anthropic = require('@anthropic-ai/sdk').default;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-interface ParsedDocument {
-  category: string;
-  subcategory?: string;
-  provider?: string;
-  account_number?: string;
-  property_address?: string;
-  due_date?: string;
-  amount_due?: number;
-  document_date?: string;
-  expiration_date?: string;
-  tags: string[];
-  summary: string;
-  urgency: 'low' | 'medium' | 'high' | 'critical';
-  is_final_notice: boolean;
-  extracted_data: Record<string, any>;
-}
-
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse
-) {
+module.exports = async (req, res) => {
   // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -106,7 +85,7 @@ Return ONLY the JSON, no explanation.`,
     }
 
     // Parse the JSON response
-    let parsedData: ParsedDocument;
+    let parsedData;
     try {
       // Remove any markdown code blocks if present
       let jsonText = textContent.text.trim();
@@ -131,11 +110,11 @@ Return ONLY the JSON, no explanation.`,
       model: response.model,
       usage: response.usage,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Document parsing error:', error);
     return res.status(500).json({
       error: 'Failed to parse document',
       message: error.message,
     });
   }
-}
+};

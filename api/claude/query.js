@@ -1,6 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import Anthropic from '@anthropic-ai/sdk';
-import { createClient } from '@supabase/supabase-js';
+const Anthropic = require('@anthropic-ai/sdk').default;
+const { createClient } = require('@supabase/supabase-js');
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -46,10 +45,7 @@ const FAMILY_CONTEXT = `
 - Value: ~$410,892 (Nov 2025)
 `;
 
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse
-) {
+module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -144,7 +140,7 @@ Please answer the question based on the documents and context provided. Be speci
         doc.category?.toLowerCase(),
         doc.provider?.toLowerCase(),
         doc.property_address?.toLowerCase(),
-        ...(doc.tags || []).map((t: string) => t.toLowerCase()),
+        ...(doc.tags || []).map(t => t.toLowerCase()),
       ].filter(Boolean);
 
       return matchTerms.some(term =>
@@ -163,11 +159,11 @@ Please answer the question based on the documents and context provided. Be speci
       })),
       model: response.model,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Query error:', error);
     return res.status(500).json({
       error: 'Failed to process question',
       message: error.message,
     });
   }
-}
+};
