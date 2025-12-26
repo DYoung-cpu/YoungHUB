@@ -132,12 +132,12 @@ export default function Dashboard({ session }: DashboardProps) {
             <h2>Overview</h2>
             <div className="overview-grid">
               <div className="overview-card urgent-card">
-                <UrgentItems onDocumentClick={(docId) => {
+                <UrgentItems onDocumentClick={() => {
                   setActiveTab('documents')
                 }} />
               </div>
               <div className="overview-card chat-card">
-                <VaultChat onDocumentClick={(docId) => {
+                <VaultChat onDocumentClick={() => {
                   setActiveTab('documents')
                 }} />
               </div>
@@ -223,12 +223,12 @@ export default function Dashboard({ session }: DashboardProps) {
           <div className="tab-content ask-tab">
             <div className="ask-layout">
               <div className="ask-main">
-                <VaultChat onDocumentClick={(docId) => {
+                <VaultChat onDocumentClick={() => {
                   setActiveTab('documents')
                 }} />
               </div>
               <div className="ask-sidebar">
-                <UrgentItems onDocumentClick={(docId) => {
+                <UrgentItems onDocumentClick={() => {
                   setActiveTab('documents')
                 }} />
               </div>
