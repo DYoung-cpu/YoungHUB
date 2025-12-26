@@ -101,11 +101,11 @@ module.exports = async (req, res) => {
       });
     }
 
-    if (action === 'sync-storage-paths') {
-      // Sync storage paths for documents
+    if (action === 'sync-file-paths') {
+      // Sync file_path for documents
       const { data: docs, error } = await supabase
         .from('documents')
-        .select('id, filename, storage_path');
+        .select('id, filename, file_path');
 
       if (error) throw error;
 
@@ -131,30 +131,30 @@ module.exports = async (req, res) => {
         // Preview mode
         const matches = [];
         for (const doc of docs) {
-          if (!doc.storage_path) {
-            const storagePath = storageFiles.get(doc.filename);
-            if (storagePath) {
-              matches.push({ id: doc.id, filename: doc.filename, path: storagePath });
+          if (!doc.file_path) {
+            const filePath = storageFiles.get(doc.filename);
+            if (filePath) {
+              matches.push({ id: doc.id, filename: doc.filename, path: filePath });
             }
           }
         }
         return res.status(200).json({
-          docsWithoutPath: docs.filter(d => !d.storage_path).length,
+          docsWithoutPath: docs.filter(d => !d.file_path).length,
           filesInStorage: storageFiles.size,
           matchesFound: matches.length,
           matches
         });
       }
 
-      // Update documents with matching storage paths
+      // Update documents with matching file paths
       let updated = 0;
       for (const doc of docs) {
-        if (!doc.storage_path) {
-          const storagePath = storageFiles.get(doc.filename);
-          if (storagePath) {
+        if (!doc.file_path) {
+          const filePath = storageFiles.get(doc.filename);
+          if (filePath) {
             const { error: updateError } = await supabase
               .from('documents')
-              .update({ storage_path: storagePath })
+              .update({ file_path: filePath })
               .eq('id', doc.id);
             if (!updateError) updated++;
           }
@@ -166,7 +166,7 @@ module.exports = async (req, res) => {
 
     return res.status(400).json({
       error: 'Invalid action',
-      validActions: ['find-duplicates', 'remove-duplicates', 'sync-storage-paths']
+      validActions: ['find-duplicates', 'remove-duplicates', 'sync-file-paths']
     });
 
   } catch (error) {
