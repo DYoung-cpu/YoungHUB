@@ -41,6 +41,28 @@ export default function Dashboard({ session }: DashboardProps) {
     setSelectedDocument(doc)
   }
 
+  // Handle document click from VaultChat or UrgentItems
+  const handleDocumentClickById = async (docId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('id', docId)
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setSelectedDocument(data as Document)
+        setActiveTab('documents')
+      }
+    } catch (err) {
+      console.error('Failed to fetch document:', err)
+      // Still navigate to documents tab even if fetch fails
+      setActiveTab('documents')
+    }
+  }
+
   const handleUploadComplete = () => {
     setShowUploader(false)
     // Refresh will happen via component re-render
@@ -132,14 +154,10 @@ export default function Dashboard({ session }: DashboardProps) {
             <h2>Overview</h2>
             <div className="overview-grid">
               <div className="overview-card urgent-card">
-                <UrgentItems onDocumentClick={() => {
-                  setActiveTab('documents')
-                }} />
+                <UrgentItems onDocumentClick={handleDocumentClickById} />
               </div>
               <div className="overview-card chat-card">
-                <VaultChat onDocumentClick={() => {
-                  setActiveTab('documents')
-                }} />
+                <VaultChat onDocumentClick={handleDocumentClickById} />
               </div>
               <div className="overview-card">
                 <h3>Quick Actions</h3>
@@ -223,14 +241,10 @@ export default function Dashboard({ session }: DashboardProps) {
           <div className="tab-content ask-tab">
             <div className="ask-layout">
               <div className="ask-main">
-                <VaultChat onDocumentClick={() => {
-                  setActiveTab('documents')
-                }} />
+                <VaultChat onDocumentClick={handleDocumentClickById} />
               </div>
               <div className="ask-sidebar">
-                <UrgentItems onDocumentClick={() => {
-                  setActiveTab('documents')
-                }} />
+                <UrgentItems onDocumentClick={handleDocumentClickById} />
               </div>
             </div>
           </div>

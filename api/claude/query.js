@@ -107,9 +107,13 @@ You have access to the family's documents and can answer questions about:
 - Investment accounts
 - Any stored documents
 
-Always be helpful, accurate, and reference specific documents or account numbers when relevant.
-If you don't have information to answer a question, say so clearly.
-Format currency as $X,XXX.XX and dates as Month Day, Year.`,
+IMPORTANT GUIDELINES:
+1. When asked about mortgages, insurance, or property-related questions without specifying which property, ALWAYS list ALL properties and their relevant information. The family owns 3 properties with mortgages.
+2. Always be specific with property addresses, account numbers, and servicer names.
+3. Reference specific document names when citing information.
+4. If the question is ambiguous (e.g., "who is my mortgage servicer"), provide a complete list of all servicers for all properties rather than picking one.
+5. Format currency as $X,XXX.XX and dates as Month Day, Year.
+6. If you don't have information to answer a question, say so clearly.`,
       messages: [
         {
           role: 'user',
