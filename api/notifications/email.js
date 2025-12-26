@@ -1,6 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
-import { google } from 'googleapis';
+const { createClient } = require('@supabase/supabase-js');
+const { google } = require('googleapis');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -22,28 +21,9 @@ if (process.env.GOOGLE_REFRESH_TOKEN) {
   });
 }
 
-interface EmailNotification {
-  to: string;
-  subject: string;
-  body: string;
-  html?: string;
-}
-
-interface SendEmailRequest {
-  familyMemberIds?: string[];  // Send to specific members
-  sendToAll?: boolean;         // Send to all family members
-  subject: string;
-  body: string;
-  html?: string;
-  category?: string;           // For logging
-  documentId?: string;
-  reminderId?: string;
-  calendarEventId?: string;
-}
-
 // Email templates
 const emailTemplates = {
-  billReminder: (data: { title: string; dueDate: string; amount?: string; documentName?: string }) => ({
+  billReminder: (data) => ({
     subject: `Bill Reminder: ${data.title}`,
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -58,7 +38,7 @@ const emailTemplates = {
           ${data.amount ? `<p style="color: #555; font-size: 16px;">Amount: <strong>$${data.amount}</strong></p>` : ''}
           ${data.documentName ? `<p style="color: #888; font-size: 14px;">Document: ${data.documentName}</p>` : ''}
           <div style="margin-top: 30px;">
-            <a href="https://familyfinancehub.vercel.app/documents"
+            <a href="https://young-hub.vercel.app/documents"
                style="background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
               View in Family Vault
             </a>
@@ -71,7 +51,7 @@ const emailTemplates = {
     `
   }),
 
-  urgentItem: (data: { title: string; description: string; urgencyLevel: string }) => ({
+  urgentItem: (data) => ({
     subject: `URGENT: ${data.title}`,
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -83,7 +63,7 @@ const emailTemplates = {
           <p style="color: #333; font-size: 18px; font-weight: bold;">${data.title}</p>
           <p style="color: #555; font-size: 16px;">${data.description}</p>
           <div style="margin-top: 30px;">
-            <a href="https://familyfinancehub.vercel.app/documents"
+            <a href="https://young-hub.vercel.app/documents"
                style="background: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
               Take Action Now
             </a>
@@ -96,7 +76,7 @@ const emailTemplates = {
     `
   }),
 
-  calendarUpdate: (data: { memberName: string; eventType: string; eventDate: string }) => ({
+  calendarUpdate: (data) => ({
     subject: `Calendar Update: ${data.memberName} - ${data.eventType}`,
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -114,7 +94,7 @@ const emailTemplates = {
             </p>
           </div>
           <div style="margin-top: 30px;">
-            <a href="https://familyfinancehub.vercel.app/calendar"
+            <a href="https://young-hub.vercel.app/calendar"
                style="background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
               View Calendar
             </a>
@@ -128,7 +108,7 @@ const emailTemplates = {
   })
 };
 
-async function sendGmailEmail(email: EmailNotification): Promise<boolean> {
+async function sendGmailEmail(email) {
   try {
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     const senderAddress = process.env.GMAIL_SENDER_ADDRESS || 'familyvault.notifications@gmail.com';
@@ -165,7 +145,7 @@ async function sendGmailEmail(email: EmailNotification): Promise<boolean> {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -186,7 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       documentId,
       reminderId,
       calendarEventId
-    } = req.body as SendEmailRequest;
+    } = req.body;
 
     if (!subject || !body) {
       return res.status(400).json({ error: 'Missing subject or body' });
@@ -257,8 +237,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     );
 
-    const sent = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
-    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !(r.value as any).success && !(r.value as any).skipped)).length;
+    const sent = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success && !r.value.skipped)).length;
 
     return res.status(200).json({
       success: true,
@@ -271,7 +251,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('Email notification error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-}
+};
 
 // Export templates for use in other API routes
-export { emailTemplates };
+module.exports.emailTemplates = emailTemplates;

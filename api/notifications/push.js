@@ -1,6 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import webpush from 'web-push';
-import { createClient } from '@supabase/supabase-js';
+const webpush = require('web-push');
+const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client with service role key for server-side operations
 const supabase = createClient(
@@ -17,36 +16,14 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
-interface PushNotificationPayload {
-  title: string;
-  body: string;
-  icon?: string;
-  badge?: string;
-  tag?: string;
-  data?: {
-    url?: string;
-    documentId?: string;
-    reminderId?: string;
-    calendarEventId?: string;
-    category?: string;
-  };
-}
-
-interface SendPushRequest {
-  familyMemberIds?: string[];  // Send to specific members
-  sendToAll?: boolean;         // Send to all family members
-  notification: PushNotificationPayload;
-  category?: string;           // For logging purposes
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async (req, res) => {
   // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { familyMemberIds, sendToAll, notification, category } = req.body as SendPushRequest;
+    const { familyMemberIds, sendToAll, notification, category } = req.body;
 
     if (!notification || !notification.title) {
       return res.status(400).json({ error: 'Missing notification title' });
@@ -147,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
 
           return { success: true, memberId: sub.family_member_id };
-        } catch (error: any) {
+        } catch (error) {
           console.error('Push send error:', error);
 
           // If subscription is invalid, mark it as inactive
@@ -174,9 +151,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     );
 
-    const sent = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
-    const skipped = results.filter(r => r.status === 'fulfilled' && (r.value as any).skipped).length;
-    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && (r.value as any).error)).length;
+    const sent = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const skipped = results.filter(r => r.status === 'fulfilled' && r.value.skipped).length;
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error)).length;
 
     return res.status(200).json({
       success: true,
@@ -190,4 +167,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('Push notification error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-}
+};

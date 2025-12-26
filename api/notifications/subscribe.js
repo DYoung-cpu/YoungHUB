@@ -1,5 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -7,29 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY || ''
 );
 
-interface SubscribeRequest {
-  familyMemberId: string;
-  subscription: {
-    endpoint: string;
-    keys: {
-      p256dh: string;
-      auth: string;
-    };
-  };
-  deviceName?: string;
-  userAgent?: string;
-}
-
-interface UnsubscribeRequest {
-  endpoint: string;
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async (req, res) => {
   // Handle subscription management
   if (req.method === 'POST') {
     // Subscribe to push notifications
     try {
-      const { familyMemberId, subscription, deviceName, userAgent } = req.body as SubscribeRequest;
+      const { familyMemberId, subscription, deviceName, userAgent } = req.body;
 
       if (!familyMemberId || !subscription || !subscription.endpoint || !subscription.keys) {
         return res.status(400).json({ error: 'Missing required subscription data' });
@@ -73,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'DELETE') {
     // Unsubscribe from push notifications
     try {
-      const { endpoint } = req.body as UnsubscribeRequest;
+      const { endpoint } = req.body;
 
       if (!endpoint) {
         return res.status(400).json({ error: 'Missing endpoint' });
@@ -115,4 +97,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
-}
+};

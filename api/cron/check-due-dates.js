@@ -1,6 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
-import webpush from 'web-push';
+const { createClient } = require('@supabase/supabase-js');
+const webpush = require('web-push');
 
 // Initialize Supabase
 const supabase = createClient(
@@ -17,16 +16,6 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
-interface DueDocument {
-  id: string;
-  filename: string;
-  category: string;
-  provider?: string;
-  property_address?: string;
-  due_date: string;
-  summary?: string;
-}
-
 /**
  * This endpoint is designed to be called by Vercel Cron
  * Add to vercel.json:
@@ -37,7 +26,7 @@ interface DueDocument {
  *   }]
  * }
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async (req, res) => {
   // Verify cron secret (optional but recommended)
   const authHeader = req.headers.authorization;
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -57,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const results = {
       checked: 0,
       notificationsSent: 0,
-      errors: [] as string[]
+      errors: []
     };
 
     for (const daysAhead of checkDays) {
@@ -82,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Send notifications for each document
       for (const doc of documents) {
-        await sendDueDateNotification(doc as DueDocument, daysAhead, results);
+        await sendDueDateNotification(doc, daysAhead, results);
       }
     }
 
@@ -117,15 +106,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('Due date check error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-}
+};
 
-async function sendDueDateNotification(
-  doc: DueDocument,
-  daysAhead: number,
-  results: { notificationsSent: number; errors: string[] }
-) {
-  let urgencyLevel: string;
-  let title: string;
+async function sendDueDateNotification(doc, daysAhead, results) {
+  let urgencyLevel;
+  let title;
 
   if (daysAhead < 0) {
     urgencyLevel = 'OVERDUE';
@@ -185,7 +170,7 @@ async function sendDueDateNotification(
         document_id: doc.id,
         status: 'sent'
       });
-    } catch (error: any) {
+    } catch (error) {
       results.errors.push(`Push failed for subscription ${sub.id}: ${error.message}`);
 
       // Deactivate invalid subscriptions
@@ -199,12 +184,8 @@ async function sendDueDateNotification(
   }
 }
 
-async function sendReminderNotification(
-  reminder: any,
-  daysUntil: number,
-  results: { notificationsSent: number; errors: string[] }
-) {
-  let title: string;
+async function sendReminderNotification(reminder, daysUntil, results) {
+  let title;
 
   if (daysUntil < 0) {
     title = `OVERDUE: ${reminder.title}`;
@@ -235,18 +216,13 @@ async function sendReminderNotification(
   });
 
   for (const sub of subscriptions) {
-    // Check notification preferences
-    if (reminder.notify_david && sub.family_member_id) {
-      // Would check if this subscription belongs to David
-    }
-
     try {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: sub.keys },
         payload
       );
       results.notificationsSent++;
-    } catch (error: any) {
+    } catch (error) {
       results.errors.push(`Reminder push failed: ${error.message}`);
     }
   }
