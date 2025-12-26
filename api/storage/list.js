@@ -20,9 +20,21 @@ module.exports = async (req, res) => {
 
     // For each bucket, list files
     for (const bucket of buckets) {
-      const { data: files, error: filesError } = await supabase.storage
+      // List root level
+      const { data: rootFiles, error: rootError } = await supabase.storage
         .from(bucket.name)
         .list('', { limit: 100 });
+
+      // If there's a documents folder, list its contents
+      let docFiles = [];
+      const { data: subFiles, error: subError } = await supabase.storage
+        .from(bucket.name)
+        .list('documents', { limit: 100 });
+      if (!subError && subFiles) {
+        docFiles = subFiles;
+      }
+
+      const files = [...(rootFiles || []), ...docFiles];
 
       result.buckets.push({
         name: bucket.name,
