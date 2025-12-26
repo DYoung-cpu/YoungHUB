@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
           name: f.name,
           size: f.metadata?.size || 'unknown'
         })) : [],
-        error: filesError?.message
+        error: rootError?.message || subError?.message
       });
     }
 
