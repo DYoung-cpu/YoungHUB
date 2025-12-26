@@ -6,49 +6,46 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
+  const { folder } = req.query;
+
   try {
-    // List all buckets
-    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    const bucketName = 'family-vault';
 
-    if (bucketsError) {
-      return res.status(500).json({ error: 'Failed to list buckets', details: bucketsError.message });
-    }
+    if (folder) {
+      // List specific folder
+      const { data: files, error } = await supabase.storage
+        .from(bucketName)
+        .list(folder, { limit: 100 });
 
-    const result = {
-      buckets: []
-    };
-
-    // For each bucket, list files
-    for (const bucket of buckets) {
-      // List root level
-      const { data: rootFiles, error: rootError } = await supabase.storage
-        .from(bucket.name)
-        .list('', { limit: 100 });
-
-      // If there's a documents folder, list its contents
-      let docFiles = [];
-      const { data: subFiles, error: subError } = await supabase.storage
-        .from(bucket.name)
-        .list('documents', { limit: 100 });
-      if (!subError && subFiles) {
-        docFiles = subFiles;
+      if (error) {
+        return res.status(500).json({ error: error.message });
       }
 
-      const files = [...(rootFiles || []), ...docFiles];
-
-      result.buckets.push({
-        name: bucket.name,
-        public: bucket.public,
-        fileCount: files ? files.length : 0,
-        files: files ? files.slice(0, 20).map(f => ({
+      return res.status(200).json({
+        folder,
+        fileCount: files?.length || 0,
+        files: files?.map(f => ({
           name: f.name,
-          size: f.metadata?.size || 'unknown'
-        })) : [],
-        error: rootError?.message || subError?.message
+          path: `${folder}/${f.name}`,
+          size: f.metadata?.size,
+          lastModified: f.metadata?.lastModified
+        })) || []
       });
     }
 
-    return res.status(200).json(result);
+    // List root folders
+    const { data: rootItems, error } = await supabase.storage
+      .from(bucketName)
+      .list('', { limit: 100 });
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.status(200).json({
+      bucket: bucketName,
+      folders: rootItems?.map(f => f.name) || []
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
