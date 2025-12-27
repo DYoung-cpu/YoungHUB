@@ -78,7 +78,7 @@ export function VaultChat({ onDocumentClick }: VaultChatProps) {
       const response = await fetch('/api/memory?action=sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', session_id: session.id }),
+        body: JSON.stringify({ sessions_action: 'get', session_id: session.id }),
       });
 
       if (response.ok) {

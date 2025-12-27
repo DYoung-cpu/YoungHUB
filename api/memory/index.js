@@ -332,10 +332,11 @@ async function handleFacts(req, res) {
 }
 
 async function handleSessions(req, res) {
-  const { action } = req.body || req.query;
+  // For sessions, use 'sessions_action' param to avoid conflict with main 'action' param
+  const sessionsAction = req.body?.sessions_action || req.query?.sessions_action || 'list';
 
   try {
-    switch (action || 'list') {
+    switch (sessionsAction) {
       case 'list':
         const { limit = 20 } = req.query;
 
