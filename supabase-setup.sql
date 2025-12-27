@@ -592,6 +592,119 @@ CREATE INDEX IF NOT EXISTS idx_documents_supersedes ON documents(supersedes_id);
 CREATE INDEX IF NOT EXISTS idx_documents_is_latest ON documents(is_latest);
 
 -- ============================================
+-- VAULT CHAT MEMORY SYSTEM
+-- ============================================
+
+-- 30. Chat Sessions Table - VaultChat conversation sessions
+CREATE TABLE IF NOT EXISTS vault_chat_sessions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  message_count INTEGER DEFAULT 0,
+  summary TEXT,  -- AI-generated summary of conversation
+  topics TEXT[],  -- Auto-extracted topics discussed
+  documents_discussed UUID[],  -- Documents referenced in chat
+  family_member_id UUID REFERENCES family_members(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 31. Vault Chat Messages Table - Individual chat messages
+CREATE TABLE IF NOT EXISTS vault_chat_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id UUID REFERENCES vault_chat_sessions(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,  -- 'user' or 'assistant'
+  content TEXT NOT NULL,
+  documents_referenced UUID[],  -- Docs mentioned in this message
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 32. Learned Facts Table - Knowledge extracted from documents and conversations
+CREATE TABLE IF NOT EXISTS learned_facts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  fact TEXT NOT NULL,
+  source_type TEXT,  -- 'document', 'conversation', 'manual'
+  source_id UUID,    -- document_id or vault_chat_session_id
+  entity_type TEXT,  -- 'person', 'property', 'account', 'date', 'amount'
+  entity_name TEXT,  -- 'David Young', '1085 Acanto', 'SPS Mortgage', etc.
+  confidence FLOAT DEFAULT 1.0,
+  verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 33. User Preferences Table - Preferences learned over time
+CREATE TABLE IF NOT EXISTS vault_user_preferences (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  family_member_id UUID REFERENCES family_members(id),
+  preference_type TEXT,  -- 'format', 'detail_level', 'notification', 'category'
+  preference_value JSONB,
+  learned_from TEXT,  -- How we learned this preference
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 34. Document History Table - Audit trail for document changes
+CREATE TABLE IF NOT EXISTS document_history (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,  -- 'split', 'merge', 'rename', 'recategorize', 'reassign', 'archive'
+  old_values JSONB,
+  new_values JSONB,
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by TEXT DEFAULT 'system'
+);
+
+-- 35. Document Audit Results Table - Stores page-by-page analysis
+CREATE TABLE IF NOT EXISTS document_audit_results (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+  page_number INTEGER,
+  page_type TEXT,  -- 'bill', 'statement', 'letter', 'form', 'legal', 'medical', 'tax', 'other'
+  document_title TEXT,
+  belongs_to_entity TEXT,
+  provider TEXT,
+  account_number TEXT,
+  document_date DATE,
+  is_continuation BOOLEAN DEFAULT false,
+  key_amounts JSONB,  -- [{ "label": "Total Due", "amount": 123.45 }]
+  suggested_category TEXT,
+  suggested_filename TEXT,
+  issues TEXT[],  -- ['mislabeled', 'wrong_entity', 'bundle_should_split']
+  raw_analysis JSONB,  -- Full Claude Vision response
+  analyzed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 36. Create indexes for memory tables
+CREATE INDEX IF NOT EXISTS idx_vault_chat_sessions_member ON vault_chat_sessions(family_member_id);
+CREATE INDEX IF NOT EXISTS idx_vault_chat_sessions_last_message ON vault_chat_sessions(last_message_at);
+CREATE INDEX IF NOT EXISTS idx_vault_chat_messages_session ON vault_chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_learned_facts_entity ON learned_facts(entity_type, entity_name);
+CREATE INDEX IF NOT EXISTS idx_learned_facts_source ON learned_facts(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_document_history_document ON document_history(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_audit_results_document ON document_audit_results(document_id);
+
+-- 37. RLS Policies for memory tables
+ALTER TABLE vault_chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vault_chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learned_facts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vault_user_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_audit_results ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Family can manage vault_chat_sessions" ON vault_chat_sessions FOR ALL USING (true);
+CREATE POLICY "Family can manage vault_chat_messages" ON vault_chat_messages FOR ALL USING (true);
+CREATE POLICY "Family can manage learned_facts" ON learned_facts FOR ALL USING (true);
+CREATE POLICY "Family can manage vault_user_preferences" ON vault_user_preferences FOR ALL USING (true);
+CREATE POLICY "Family can view document_history" ON document_history FOR ALL USING (true);
+CREATE POLICY "Family can manage document_audit_results" ON document_audit_results FOR ALL USING (true);
+
+-- Enable real-time for memory tables
+ALTER PUBLICATION supabase_realtime ADD TABLE vault_chat_sessions;
+ALTER PUBLICATION supabase_realtime ADD TABLE vault_chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE learned_facts;
+
+-- ============================================
 -- SETUP COMPLETE
 -- ============================================
 -- Next steps:
@@ -600,3 +713,4 @@ CREATE INDEX IF NOT EXISTS idx_documents_is_latest ON documents(is_latest);
 -- 3. Start app: npm run dev
 -- 4. Add VAPID keys to Vercel environment variables
 -- 5. Set up Gmail API credentials for email notifications
+-- 6. Run memory system migrations for chat persistence

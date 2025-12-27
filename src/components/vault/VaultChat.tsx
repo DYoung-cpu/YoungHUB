@@ -13,27 +13,39 @@ interface Message {
   }>;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  last_message_at: string;
+  message_count: number;
+  summary?: string;
+}
+
 interface VaultChatProps {
   onDocumentClick?: (docId: string) => void;
 }
 
-export function VaultChat({ onDocumentClick }: VaultChatProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: `Hi! I'm your Family Vault assistant. I can help you find information about your documents, bills, insurance policies, and more.
+const WELCOME_MESSAGE: Message = {
+  id: '1',
+  role: 'assistant',
+  content: `Hi! I'm your Family Vault assistant. I can help you find information about your documents, bills, insurance policies, and more.
 
 Try asking me:
 - "What bills are due this month?"
 - "What is Coty's Medicare number?"
 - "Show me the latest mortgage statement"
 - "When does the HO6 insurance expire?"`,
-      timestamp: new Date(),
-    },
-  ]);
+  timestamp: new Date(),
+};
+
+export function VaultChat({ onDocumentClick }: VaultChatProps) {
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [factsCount, setFactsCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -43,6 +55,83 @@ Try asking me:
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load previous sessions on mount
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const loadSessions = async () => {
+    try {
+      const response = await fetch('/api/memory?action=sessions&limit=10');
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+    }
+  };
+
+  const loadSession = async (session: ChatSession) => {
+    try {
+      const response = await fetch('/api/memory?action=sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', session_id: session.id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const loadedMessages: Message[] = data.messages.map((m: { id: string; role: 'user' | 'assistant'; content: string; created_at: string }) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.created_at),
+        }));
+
+        setMessages([WELCOME_MESSAGE, ...loadedMessages]);
+        setSessionId(session.id);
+        setShowHistory(false);
+      }
+    } catch (error) {
+      console.error('Failed to load session:', error);
+    }
+  };
+
+  const startNewSession = () => {
+    setMessages([WELCOME_MESSAGE]);
+    setSessionId(null);
+    setShowHistory(false);
+  };
+
+  const saveToMemory = async (userContent: string, assistantContent: string, docs: Message['relevantDocs']) => {
+    try {
+      const response = await fetch('/api/memory?action=save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_message: userContent,
+          assistant_response: assistantContent,
+          documents_discussed: docs || [],
+          create_session: !sessionId,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.session_id && !sessionId) {
+          setSessionId(data.session_id);
+        }
+        if (data.facts_extracted > 0) {
+          setFactsCount(prev => prev + data.facts_extracted);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save to memory:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +179,10 @@ Try asking me:
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Save to memory system (async, don't block UI)
+      saveToMemory(userMessage.content, assistantMessage.content, assistantMessage.relevantDocs);
+
     } catch (error) {
       console.error('Chat error:', error);
       const errorMessage: Message = {
@@ -111,12 +204,76 @@ Try asking me:
     "HELOC balance and limit",
   ];
 
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days} days ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <div className="vault-chat">
       <div className="chat-header">
         <span className="chat-icon">🤖</span>
         <h3>Ask Family Vault</h3>
+        <div className="chat-header-actions">
+          {factsCount > 0 && (
+            <span className="facts-badge" title="Facts learned this session">
+              🧠 {factsCount}
+            </span>
+          )}
+          <button
+            className="history-toggle"
+            onClick={() => setShowHistory(!showHistory)}
+            title="Chat history"
+          >
+            📋
+          </button>
+          <button
+            className="new-chat-btn"
+            onClick={startNewSession}
+            title="New conversation"
+          >
+            ✨
+          </button>
+        </div>
       </div>
+
+      {showHistory && (
+        <div className="chat-history-panel">
+          <div className="history-header">
+            <h4>Previous Conversations</h4>
+            <button onClick={() => setShowHistory(false)}>✕</button>
+          </div>
+          <div className="history-list">
+            {sessions.length === 0 ? (
+              <p className="no-sessions">No previous conversations</p>
+            ) : (
+              sessions.map(session => (
+                <button
+                  key={session.id}
+                  className={`session-item ${session.id === sessionId ? 'active' : ''}`}
+                  onClick={() => loadSession(session)}
+                >
+                  <div className="session-title">{session.title}</div>
+                  <div className="session-meta">
+                    <span>{formatDate(session.last_message_at)}</span>
+                    <span>{session.message_count} messages</span>
+                  </div>
+                  {session.summary && (
+                    <div className="session-summary">{session.summary}</div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="chat-messages">
         {messages.map(message => (
