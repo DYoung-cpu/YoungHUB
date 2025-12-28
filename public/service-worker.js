@@ -1,69 +1,82 @@
 // Service Worker for Family Finance Hub
-// Handles background location tracking and offline functionality
+// Handles push notifications only - location tracking handled in main app
 
-const CACHE_NAME = 'family-hub-v1';
+const CACHE_NAME = 'family-hub-v3';
+
+// Only cache static assets, NOT HTML or JS (to avoid stale content issues)
 const urlsToCache = [
-  '/',
-  '/index.html',
   '/manifest.json'
 ];
 
 // Install event - cache assets
 self.addEventListener('install', event => {
+  console.log('Service Worker: Installing...');
+  // Skip waiting to activate immediately
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
+        console.log('Service Worker: Caching static assets');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control
 self.addEventListener('activate', event => {
+  console.log('Service Worker: Activating...');
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    Promise.all([
+      // Clean up all old caches
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME) {
+              console.log('Service Worker: Deleting old cache', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      // Take control of all clients immediately
+      self.clients.claim()
+    ])
   );
 });
 
-// Fetch event - serve from cache when offline
+// Fetch event - NETWORK FIRST for HTML/JS, cache only for manifest
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // Never cache HTML or JS files - always get fresh from network
+  if (event.request.destination === 'document' ||
+      event.request.destination === 'script' ||
+      url.pathname === '/' ||
+      url.pathname.endsWith('.html') ||
+      url.pathname.endsWith('.js')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // For other requests, try cache first, then network
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Cache hit - return response
         if (response) {
           return response;
         }
         return fetch(event.request);
-      }
-    )
+      })
   );
 });
 
-// Background sync for location updates
+// Background sync - disabled since geolocation doesn't work in service workers
 self.addEventListener('sync', event => {
-  if (event.tag === 'location-update') {
-    event.waitUntil(sendLocationUpdate());
-  }
+  console.log('Service Worker: Sync event received', event.tag);
+  // Location tracking is handled in the main app, not here
 });
 
-// Periodic background sync (when supported)
-self.addEventListener('periodicsync', event => {
-  if (event.tag === 'track-location') {
-    event.waitUntil(trackLocation());
-  }
-});
-
-// Push notification support - handles server-sent push notifications
+// Push notification support
 self.addEventListener('push', event => {
   let data = {
     title: 'Family Vault',
@@ -74,7 +87,6 @@ self.addEventListener('push', event => {
     data: {}
   };
 
-  // Parse push data if available
   if (event.data) {
     try {
       const payload = event.data.json();
@@ -87,7 +99,6 @@ self.addEventListener('push', event => {
         data: payload.data || {}
       };
     } catch (e) {
-      // If not JSON, use as plain text
       data.body = event.data.text();
     }
   }
@@ -134,87 +145,9 @@ function getNotificationActions(category) {
   }
 }
 
-// Send location update to server
-async function sendLocationUpdate() {
-  try {
-    const position = await getCurrentPosition();
-    
-    // Send to Supabase
-    const response = await fetch('/api/location', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        timestamp: new Date().toISOString()
-      })
-    });
-
-    return response.ok;
-  } catch (error) {
-    console.error('Failed to send location:', error);
-    return false;
-  }
-}
-
-// Get current position using Geolocation API
-function getCurrentPosition() {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    });
-  });
-}
-
-// Track location in background
-async function trackLocation() {
-  try {
-    // Request permission if needed
-    const permission = await navigator.permissions.query({ name: 'geolocation' });
-    
-    if (permission.state === 'granted') {
-      await sendLocationUpdate();
-      
-      // Schedule next update
-      if ('BackgroundFetch' in self) {
-        await self.registration.backgroundFetch.fetch('location-track', ['/api/location'], {
-          title: 'Tracking location',
-          icons: [{
-            sizes: '192x192',
-            src: '/icon-192.png',
-            type: 'image/png',
-          }],
-          downloadTotal: 0
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Background tracking failed:', error);
-  }
-}
-
 // Message handler for communication with main app
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'START_TRACKING') {
-    // Start periodic location tracking
-    if ('periodicSync' in self.registration) {
-      self.registration.periodicSync.register('track-location', {
-        minInterval: 5 * 60 * 1000 // 5 minutes
-      });
-    }
-  }
-
-  if (event.data && event.data.type === 'STOP_TRACKING') {
-    // Stop tracking
-    if ('periodicSync' in self.registration) {
-      self.registration.periodicSync.unregister('track-location');
-    }
-  }
+  console.log('Service Worker: Message received', event.data?.type);
 
   // Calendar update notification
   if (event.data && event.data.type === 'CALENDAR_UPDATE') {
@@ -252,23 +185,21 @@ self.addEventListener('message', event => {
 
     self.registration.showNotification('Family Calendar Updated', options);
   }
+
+  // Location tracking messages - just acknowledge, tracking done in main app
+  if (event.data && (event.data.type === 'START_TRACKING' || event.data.type === 'STOP_TRACKING')) {
+    console.log('Service Worker: Location tracking managed by main app');
+  }
 });
 
 // Handle notification clicks
 self.addEventListener('notificationclick', event => {
   event.notification.close();
 
-  // Handle snooze action
-  if (event.action === 'snooze') {
-    // Could implement snooze logic here
+  if (event.action === 'snooze' || event.action === 'dismiss') {
     return;
   }
 
-  if (event.action === 'dismiss') {
-    return;
-  }
-
-  // Determine where to navigate based on notification data
   let targetUrl = '/';
   const data = event.notification.data || {};
 
@@ -285,7 +216,6 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(clientList => {
-        // If app is already open, focus it and navigate
         for (const client of clientList) {
           if ((client.url.includes('localhost') || client.url.includes('vercel.app')) && 'focus' in client) {
             client.postMessage({
@@ -295,7 +225,6 @@ self.addEventListener('notificationclick', event => {
             return client.focus();
           }
         }
-        // Otherwise open new window
         if (clients.openWindow) {
           return clients.openWindow(targetUrl);
         }
