@@ -216,7 +216,7 @@ export default function FamilyTracking() {
   const saveLocationToDatabase = useCallback(async (position: GeolocationPosition) => {
     try {
       // First get my member ID
-      const { data: member } = await supabase
+      let { data: member } = await supabase
         .from('family_members')
         .select('id')
         .eq('email', myEmail)
@@ -231,9 +231,16 @@ export default function FamilyTracking() {
           .single()
 
         if (!newMember) return
+        member = newMember
       }
 
-      const memberId = member?.id
+      const memberId = member.id
+
+      // Update member to show they're sharing
+      await supabase
+        .from('family_members')
+        .update({ is_sharing: true, status: 'Active', updated_at: new Date().toISOString() })
+        .eq('id', memberId)
 
       // Upsert location (update if exists, insert if not)
       const { error } = await supabase
@@ -251,7 +258,7 @@ export default function FamilyTracking() {
       if (error) {
         console.error('Error saving location:', error)
       } else {
-        console.log('Location saved to database')
+        console.log('Location saved to database:', position.coords.latitude, position.coords.longitude)
       }
 
       // Also save to history
@@ -263,10 +270,13 @@ export default function FamilyTracking() {
         speed: position.coords.speed || 0,
         timestamp: new Date().toISOString()
       })
+
+      // Reload family members to show updated location
+      loadFamilyMembers()
     } catch (error) {
       console.error('Failed to save location:', error)
     }
-  }, [myEmail])
+  }, [myEmail, loadFamilyMembers])
 
   // Focus map on a specific family member
   const focusOnMember = (member: FamilyMember) => {
@@ -628,10 +638,19 @@ export default function FamilyTracking() {
       <div className="tracking-header">
         <h2>👨‍👩‍👧 Family Tracking</h2>
         <div className="tracking-status-badge">
-          <span className="status-active">
-            <span className="pulse-dot"></span>
-            Live Tracking
-          </span>
+          {myLocation ? (
+            <span className="status-active">
+              <span className="pulse-dot"></span>
+              Live Tracking
+            </span>
+          ) : (
+            <button
+              className="enable-tracking-btn"
+              onClick={startTracking}
+            >
+              📍 Enable Location
+            </button>
+          )}
         </div>
       </div>
 
