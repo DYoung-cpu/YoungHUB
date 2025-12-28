@@ -214,65 +214,98 @@ export default function FamilyTracking() {
 
   // Save my location to Supabase
   const saveLocationToDatabase = useCallback(async (position: GeolocationPosition) => {
+    console.log('=== SAVING LOCATION ===')
+    console.log('Coords:', position.coords.latitude, position.coords.longitude)
+    console.log('Looking for member:', myEmail)
+
     try {
-      // First get my member ID
-      let { data: member } = await supabase
+      // First get my member ID - use maybeSingle to avoid error if not found
+      const { data: member, error: memberError } = await supabase
         .from('family_members')
         .select('id')
         .eq('email', myEmail)
-        .single()
+        .maybeSingle()
 
-      if (!member) {
+      if (memberError) {
+        console.error('Error finding member:', memberError)
+        return
+      }
+
+      let memberId = member?.id
+
+      if (!memberId) {
         console.log('Member not found, creating...')
-        const { data: newMember } = await supabase
+        const { data: newMember, error: createError } = await supabase
           .from('family_members')
           .insert({ email: myEmail, name: 'David', status: 'Active', is_sharing: true })
           .select('id')
           .single()
 
-        if (!newMember) return
-        member = newMember
+        if (createError) {
+          console.error('Error creating member:', createError)
+          return
+        }
+        if (!newMember) {
+          console.error('No member created')
+          return
+        }
+        memberId = newMember.id
+        console.log('Created new member:', memberId)
+      } else {
+        console.log('Found existing member:', memberId)
       }
 
-      const memberId = member.id
-
       // Update member to show they're sharing
-      await supabase
+      const { error: updateError } = await supabase
         .from('family_members')
         .update({ is_sharing: true, status: 'Active', updated_at: new Date().toISOString() })
         .eq('id', memberId)
 
-      // Upsert location (update if exists, insert if not)
-      const { error } = await supabase
+      if (updateError) {
+        console.error('Error updating member status:', updateError)
+      }
+
+      // First try to delete existing location, then insert new one
+      // This is more reliable than upsert with some Supabase configurations
+      await supabase
         .from('locations')
-        .upsert({
+        .delete()
+        .eq('member_id', memberId)
+
+      const { error: locationError } = await supabase
+        .from('locations')
+        .insert({
           member_id: memberId,
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
           speed: position.coords.speed || 0,
-          battery_level: null, // Battery API deprecated
+          battery_level: null,
           timestamp: new Date().toISOString()
-        }, { onConflict: 'member_id' })
+        })
 
-      if (error) {
-        console.error('Error saving location:', error)
+      if (locationError) {
+        console.error('Error saving location:', locationError)
       } else {
-        console.log('Location saved to database:', position.coords.latitude, position.coords.longitude)
+        console.log('✅ Location saved successfully!')
       }
 
-      // Also save to history
-      await supabase.from('location_history').insert({
+      // Save to history (don't wait for this)
+      supabase.from('location_history').insert({
         member_id: memberId,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: position.coords.accuracy,
         speed: position.coords.speed || 0,
         timestamp: new Date().toISOString()
+      }).then(({ error }) => {
+        if (error) console.error('History save error:', error)
       })
 
       // Reload family members to show updated location
-      loadFamilyMembers()
+      console.log('Reloading family members...')
+      await loadFamilyMembers()
+      console.log('=== DONE ===')
     } catch (error) {
       console.error('Failed to save location:', error)
     }
