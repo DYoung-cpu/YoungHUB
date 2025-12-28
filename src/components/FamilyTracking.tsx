@@ -212,102 +212,40 @@ export default function FamilyTracking() {
     await loadFamilyMembers()
   }
 
-  // Save my location to Supabase
+  // Save my location via API (bypasses RLS)
   const saveLocationToDatabase = useCallback(async (position: GeolocationPosition) => {
-    console.log('=== SAVING LOCATION ===')
+    console.log('=== SAVING LOCATION VIA API ===')
     console.log('Coords:', position.coords.latitude, position.coords.longitude)
-    console.log('Looking for member:', myEmail)
 
     try {
-      // First get my member ID - use maybeSingle to avoid error if not found
-      const { data: member, error: memberError } = await supabase
-        .from('family_members')
-        .select('id')
-        .eq('email', myEmail)
-        .maybeSingle()
-
-      if (memberError) {
-        console.error('Error finding member:', memberError)
-        return
-      }
-
-      let memberId = member?.id
-
-      if (!memberId) {
-        console.log('Member not found, creating...')
-        const { data: newMember, error: createError } = await supabase
-          .from('family_members')
-          .insert({ email: myEmail, name: 'David', status: 'Active', is_sharing: true })
-          .select('id')
-          .single()
-
-        if (createError) {
-          console.error('Error creating member:', createError)
-          return
-        }
-        if (!newMember) {
-          console.error('No member created')
-          return
-        }
-        memberId = newMember.id
-        console.log('Created new member:', memberId)
-      } else {
-        console.log('Found existing member:', memberId)
-      }
-
-      // Update member to show they're sharing
-      const { error: updateError } = await supabase
-        .from('family_members')
-        .update({ is_sharing: true, status: 'Active', updated_at: new Date().toISOString() })
-        .eq('id', memberId)
-
-      if (updateError) {
-        console.error('Error updating member status:', updateError)
-      }
-
-      // First try to delete existing location, then insert new one
-      // This is more reliable than upsert with some Supabase configurations
-      await supabase
-        .from('locations')
-        .delete()
-        .eq('member_id', memberId)
-
-      const { error: locationError } = await supabase
-        .from('locations')
-        .insert({
-          member_id: memberId,
+      const response = await fetch('/api/location/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: myEmail,
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
-          speed: position.coords.speed || 0,
-          battery_level: null,
-          timestamp: new Date().toISOString()
+          speed: position.coords.speed || 0
         })
-
-      if (locationError) {
-        console.error('Error saving location:', locationError)
-      } else {
-        console.log('✅ Location saved successfully!')
-      }
-
-      // Save to history (don't wait for this)
-      supabase.from('location_history').insert({
-        member_id: memberId,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        speed: position.coords.speed || 0,
-        timestamp: new Date().toISOString()
-      }).then(({ error }) => {
-        if (error) console.error('History save error:', error)
       })
 
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error('API error:', data)
+        alert(`Location save failed: ${data.error}`)
+        return
+      }
+
+      console.log('✅ Location saved via API:', data)
+
       // Reload family members to show updated location
-      console.log('Reloading family members...')
       await loadFamilyMembers()
       console.log('=== DONE ===')
     } catch (error) {
       console.error('Failed to save location:', error)
+      alert(`Location save error: ${error}`)
     }
   }, [myEmail, loadFamilyMembers])
 
