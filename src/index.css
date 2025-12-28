@@ -920,6 +920,52 @@ textarea {
   background: #5a67d8;
 }
 
+/* Clickable family cards */
+.family-member-card.has-location {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.family-member-card.has-location:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+}
+
+.family-member-card.no-location {
+  opacity: 0.7;
+}
+
+.member-location.no-data {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 15px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Loading and empty states */
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  background: white;
+  border-radius: 12px;
+  color: #64748b;
+}
+
+.loading-state::before {
+  content: '⏳';
+  display: block;
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.empty-state::before {
+  content: '👥';
+  display: block;
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
 /* Places View */
 .places-view {
   background: white;

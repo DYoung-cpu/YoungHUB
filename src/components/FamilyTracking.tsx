@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet'
 import { formatDistanceToNow } from 'date-fns'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { locationTracker } from '../lib/locationTracker'
+import { supabase } from '../lib/supabase'
 
 // Fix for default markers in React-Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -53,15 +54,15 @@ interface ChatMessage {
 // Component to recenter map on current location
 function RecenterButton({ position }: { position: [number, number] | null }) {
   const map = useMap()
-  
+
   const handleRecenter = () => {
     if (position) {
       map.setView(position, 15)
     }
   }
-  
+
   return (
-    <button 
+    <button
       onClick={handleRecenter}
       style={{
         position: 'absolute',
@@ -81,29 +82,28 @@ function RecenterButton({ position }: { position: [number, number] | null }) {
   )
 }
 
+// Component to fly to a member's location when focused
+function MapController({ focusedPosition }: { focusedPosition: [number, number] | null }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (focusedPosition) {
+      map.flyTo(focusedPosition, 16, { duration: 1 })
+    }
+  }, [map, focusedPosition])
+
+  return null
+}
+
 export default function FamilyTracking() {
   const [showAvatarUpload, setShowAvatarUpload] = useState(false)
   const [selectedMember, setSelectedMember] = useState<string | null>(null)
+  const [focusedPosition, setFocusedPosition] = useState<[number, number] | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
-  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
-    {
-      id: '1',
-      name: 'David',
-      email: 'dyoung1946@gmail.com',
-      isSharing: true,
-      status: 'At work',
-      profilePicture: localStorage.getItem('avatar_david') || undefined
-    },
-    {
-      id: '2',
-      name: 'Lisa',
-      email: 'lisa.young@gmail.com', // UPDATE THIS TO LISA'S REAL EMAIL
-      isSharing: true,
-      status: 'Home',
-      profilePicture: localStorage.getItem('avatar_lisa') || undefined
-    }
-  ])
+  const myEmail = 'dyoung1946@gmail.com' // This would come from auth
+
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
 
   const [places, setPlaces] = useState<Place[]>([
     {
@@ -126,8 +126,185 @@ export default function FamilyTracking() {
   const [showAddPlace, setShowAddPlace] = useState(false)
   const watchId = useRef<number | null>(null)
 
-  // Check for avatar permission on first load
+  // Load family members from Supabase on mount
+  const loadFamilyMembers = useCallback(async () => {
+    try {
+      // Load family members with their current locations
+      const { data: members, error: membersError } = await supabase
+        .from('family_members')
+        .select(`
+          id,
+          email,
+          name,
+          avatar_url,
+          status,
+          is_sharing,
+          locations (
+            latitude,
+            longitude,
+            accuracy,
+            speed,
+            battery_level,
+            timestamp
+          )
+        `)
+
+      if (membersError) {
+        console.error('Error loading family members:', membersError)
+        // Fall back to default members if database fails
+        setFamilyMembers([
+          { id: '1', name: 'David', email: 'dyoung1946@gmail.com', isSharing: true, status: 'Active' },
+          { id: '2', name: 'Lisa', email: 'lisa.young@email.com', isSharing: true, status: 'Active' }
+        ])
+        setIsLoading(false)
+        return
+      }
+
+      if (members && members.length > 0) {
+        const mappedMembers: FamilyMember[] = members.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          email: m.email,
+          isSharing: m.is_sharing ?? true,
+          status: m.status || 'Active',
+          avatar: m.avatar_url,
+          profilePicture: localStorage.getItem(`avatar_${m.name.toLowerCase()}`) || m.avatar_url || undefined,
+          location: m.locations?.[0] ? {
+            lat: parseFloat(m.locations[0].latitude),
+            lng: parseFloat(m.locations[0].longitude),
+            accuracy: m.locations[0].accuracy || 0,
+            timestamp: new Date(m.locations[0].timestamp),
+            speed: m.locations[0].speed || undefined,
+            battery: m.locations[0].battery_level || undefined
+          } : undefined
+        }))
+        setFamilyMembers(mappedMembers)
+      } else {
+        // No members in DB - create default ones
+        console.log('No family members found, creating defaults...')
+        await ensureDefaultMembers()
+      }
+    } catch (error) {
+      console.error('Failed to load family members:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Ensure default family members exist in database
+  const ensureDefaultMembers = async () => {
+    const defaultMembers = [
+      { email: 'dyoung1946@gmail.com', name: 'David', status: 'Active', is_sharing: true },
+      { email: 'lisa.young@email.com', name: 'Lisa', status: 'Active', is_sharing: true }
+    ]
+
+    for (const member of defaultMembers) {
+      const { error } = await supabase
+        .from('family_members')
+        .upsert(member, { onConflict: 'email' })
+
+      if (error) {
+        console.error('Error creating member:', error)
+      }
+    }
+
+    // Reload after creating
+    await loadFamilyMembers()
+  }
+
+  // Save my location to Supabase
+  const saveLocationToDatabase = useCallback(async (position: GeolocationPosition) => {
+    try {
+      // First get my member ID
+      const { data: member } = await supabase
+        .from('family_members')
+        .select('id')
+        .eq('email', myEmail)
+        .single()
+
+      if (!member) {
+        console.log('Member not found, creating...')
+        const { data: newMember } = await supabase
+          .from('family_members')
+          .insert({ email: myEmail, name: 'David', status: 'Active', is_sharing: true })
+          .select('id')
+          .single()
+
+        if (!newMember) return
+      }
+
+      const memberId = member?.id
+
+      // Upsert location (update if exists, insert if not)
+      const { error } = await supabase
+        .from('locations')
+        .upsert({
+          member_id: memberId,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          speed: position.coords.speed || 0,
+          battery_level: null, // Battery API deprecated
+          timestamp: new Date().toISOString()
+        }, { onConflict: 'member_id' })
+
+      if (error) {
+        console.error('Error saving location:', error)
+      } else {
+        console.log('Location saved to database')
+      }
+
+      // Also save to history
+      await supabase.from('location_history').insert({
+        member_id: memberId,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        speed: position.coords.speed || 0,
+        timestamp: new Date().toISOString()
+      })
+    } catch (error) {
+      console.error('Failed to save location:', error)
+    }
+  }, [myEmail])
+
+  // Focus map on a specific family member
+  const focusOnMember = (member: FamilyMember) => {
+    if (member.location) {
+      setFocusedPosition([member.location.lat, member.location.lng])
+      setSelectedView('map') // Switch to map view
+    } else {
+      alert(`${member.name}'s location is not available`)
+    }
+  }
+
+  // Load family members on mount
   useEffect(() => {
+    loadFamilyMembers()
+
+    // Subscribe to real-time location updates
+    const subscription = supabase
+      .channel('location-updates')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'locations'
+      }, (payload) => {
+        console.log('Location update received:', payload)
+        // Reload family members to get updated locations
+        loadFamilyMembers()
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [loadFamilyMembers])
+
+  // Check for avatar permission on first load (only if members loaded)
+  useEffect(() => {
+    if (familyMembers.length === 0) return
+
     const hasRequestedAvatars = localStorage.getItem('avatarsRequested')
     if (!hasRequestedAvatars) {
       setTimeout(() => {
@@ -135,15 +312,15 @@ export default function FamilyTracking() {
           '📷 Would you like to add profile pictures for family members?\n\n' +
           'This will help you quickly identify family members on the map.'
         )
-        
+
         localStorage.setItem('avatarsRequested', 'true')
         if (userConsent) {
           setShowAvatarUpload(true)
-          setSelectedMember('1') // Start with David
+          setSelectedMember(familyMembers[0]?.id || null)
         }
       }, 2000)
     }
-  }, [])
+  }, [familyMembers])
 
   // Auto-start tracking on component mount (like Life360)
   useEffect(() => {
@@ -268,16 +445,14 @@ export default function FamilyTracking() {
     showNotification('📍 Location tracking stopped')
   }
 
-  // Update my location in the family members list
+  // Update my location in the family members list AND save to database
   const updateMyLocation = (position: GeolocationPosition) => {
-    const myEmail = 'dyoung1946@gmail.com' // This would come from auth
-    
     setFamilyMembers(prev => prev.map(member => {
       if (member.email === myEmail) {
         // Check if at home
         const homePlace = places.find(p => p.name === 'Home')
         let newStatus = member.status
-        
+
         if (homePlace) {
           const distanceFromHome = calculateDistance(
             position.coords.latitude,
@@ -285,12 +460,12 @@ export default function FamilyTracking() {
             homePlace.lat,
             homePlace.lng
           )
-          
+
           if (distanceFromHome <= homePlace.radius) {
             newStatus = '🏠 Home'
           }
         }
-        
+
         return {
           ...member,
           location: {
@@ -299,13 +474,16 @@ export default function FamilyTracking() {
             accuracy: position.coords.accuracy,
             timestamp: new Date(position.timestamp),
             speed: position.coords.speed || undefined,
-            battery: undefined // Battery API not available in TypeScript types
+            battery: undefined
           },
           status: newStatus
         }
       }
       return member
     }))
+
+    // Also save to Supabase database
+    saveLocationToDatabase(position)
   }
 
   // Check if entered/left any geofenced places
@@ -502,6 +680,9 @@ export default function FamilyTracking() {
               {myLocation && (
                 <RecenterButton position={[myLocation.coords.latitude, myLocation.coords.longitude]} />
               )}
+
+              {/* Controller to fly to focused member */}
+              <MapController focusedPosition={focusedPosition} />
               
               {/* Family member markers */}
               {familyMembers.map(member => {
@@ -560,55 +741,77 @@ export default function FamilyTracking() {
 
         {selectedView === 'list' && (
           <div className="family-list">
-            {familyMembers.map(member => (
-              <div key={member.id} className="family-member-card">
-                <div className="member-header">
-                  <div className="member-avatar" onClick={() => {
-                    if (!member.profilePicture) {
-                      setSelectedMember(member.id)
-                      setShowAvatarUpload(true)
-                    }
-                  }}>
-                    {member.profilePicture ? (
-                      <img src={member.profilePicture} alt={member.name} />
-                    ) : (
-                      <div className="avatar-placeholder">
-                        {member.name[0]}
-                      </div>
-                    )}
-                  </div>
-                  <div className="member-info">
-                    <h3>{member.name}</h3>
-                    <p className="member-status">{member.status}</p>
-                  </div>
-                  <div className="member-sharing">
-                    {member.isSharing ? (
-                      <span className="sharing-active">📍 Sharing</span>
-                    ) : (
-                      <span className="sharing-inactive">📍 Not sharing</span>
-                    )}
-                  </div>
-                </div>
-                
-                {member.location && (
-                  <div className="member-location">
-                    <div className="location-details">
-                      <p>📍 Last seen: {formatDistanceToNow(member.location.timestamp)} ago</p>
-                      {member.location.battery && (
-                        <p>🔋 Battery: {member.location.battery}%</p>
+            {isLoading ? (
+              <div className="loading-state">Loading family members...</div>
+            ) : familyMembers.length === 0 ? (
+              <div className="empty-state">No family members found</div>
+            ) : (
+              familyMembers.map(member => (
+                <div
+                  key={member.id}
+                  className={`family-member-card ${member.location ? 'has-location' : 'no-location'}`}
+                  onClick={() => focusOnMember(member)}
+                  style={{ cursor: member.location ? 'pointer' : 'default' }}
+                >
+                  <div className="member-header">
+                    <div className="member-avatar" onClick={(e) => {
+                      e.stopPropagation() // Don't trigger card click
+                      if (!member.profilePicture) {
+                        setSelectedMember(member.id)
+                        setShowAvatarUpload(true)
+                      }
+                    }}>
+                      {member.profilePicture ? (
+                        <img src={member.profilePicture} alt={member.name} />
+                      ) : (
+                        <div className="avatar-placeholder">
+                          {member.name[0]}
+                        </div>
                       )}
-                      {member.location.speed && member.location.speed > 0 && (
-                        <p>🚗 Speed: {Math.round(member.location.speed * 2.237)} mph</p>
-                      )}
-                      <p>📏 Accuracy: ±{Math.round(member.location.accuracy)}m</p>
                     </div>
-                    <button className="locate-btn">
-                      🎯 Locate
-                    </button>
+                    <div className="member-info">
+                      <h3>{member.name}</h3>
+                      <p className="member-status">{member.status}</p>
+                    </div>
+                    <div className="member-sharing">
+                      {member.isSharing ? (
+                        <span className="sharing-active">📍 Sharing</span>
+                      ) : (
+                        <span className="sharing-inactive">📍 Not sharing</span>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {member.location ? (
+                    <div className="member-location">
+                      <div className="location-details">
+                        <p>📍 Last seen: {formatDistanceToNow(member.location.timestamp)} ago</p>
+                        {member.location.battery && (
+                          <p>🔋 Battery: {member.location.battery}%</p>
+                        )}
+                        {member.location.speed && member.location.speed > 0 && (
+                          <p>🚗 Speed: {Math.round(member.location.speed * 2.237)} mph</p>
+                        )}
+                        <p>📏 Accuracy: ±{Math.round(member.location.accuracy)}m</p>
+                      </div>
+                      <button
+                        className="locate-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          focusOnMember(member)
+                        }}
+                      >
+                        🎯 Show on Map
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="member-location no-data">
+                      <p>📍 Location not available - waiting for update</p>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
 
