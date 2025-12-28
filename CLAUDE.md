@@ -283,13 +283,16 @@ Lisa can tap dates to mark Office/WFH. When saved:
 
 ---
 
-## SESSION STATUS (Last Updated: December 26, 2024)
+## SESSION STATUS (Last Updated: December 27, 2024)
 
 ### All Systems Operational
 - App URL: https://young-hub.vercel.app
 - Vercel Project: https://vercel.com/david-youngs-projects-94a06a35/young-hub
 - VaultChat Q&A with Claude: **WORKING**
 - Document Analysis with Vision: **WORKING**
+- **NEW** Conversation Memory: **WORKING**
+- **NEW** Document Accounting: **WORKING**
+- **NEW** PDF Split/Combine: **READY** (pdf-lib installed)
 
 ### Vercel Environment Variables
 | Variable | Status |
@@ -303,7 +306,7 @@ Lisa can tap dates to mark Office/WFH. When saved:
 | VAPID_PRIVATE_KEY | ✅ Set |
 | VAPID_SUBJECT | ✅ Set |
 
-### Sprint 1-3 COMPLETED
+### Sprint 1-4 COMPLETED
 
 | Sprint | Task | Status | Notes |
 |--------|------|--------|-------|
@@ -314,14 +317,19 @@ Lisa can tap dates to mark Office/WFH. When saved:
 | 2 | Scan image processing | Done | 112 scan images analyzed, converted to PDFs |
 | 2 | All vault components | Done | DocumentUploader, DocumentViewer, DocumentSearch, FamilyCalendar |
 | 2 | Push notifications | Done | `src/lib/notifications.ts` + service worker |
-| **3** | **Claude API integration** | **Done** | `/api/claude/parse.ts` + `/api/claude/query.ts` |
-| **3** | **VaultChat Q&A** | **Done** | `src/components/vault/VaultChat.tsx` - natural language questions |
-| **3** | **UrgentItems widget** | **Done** | `src/components/vault/UrgentItems.tsx` - due date tracking |
-| **3** | **Web Push notifications** | **Done** | `/api/notifications/push.ts` + subscribe.ts |
-| **3** | **Email notifications** | **Done** | `/api/notifications/email.ts` - Gmail API ready |
-| **3** | **Due date checker cron** | **Done** | `/api/cron/check-due-dates.ts` - daily at 9 AM |
-| **3** | **Database: notifications** | **Done** | push_subscriptions, notification_preferences, notification_log |
-| **3** | **Database: versioning** | **Done** | supersedes_id, is_latest, statement_period columns |
+| 3 | Claude API integration | Done | `/api/claude/parse.ts` + `/api/claude/query.ts` |
+| 3 | VaultChat Q&A | Done | `src/components/vault/VaultChat.tsx` - natural language questions |
+| 3 | UrgentItems widget | Done | `src/components/vault/UrgentItems.tsx` - due date tracking |
+| 3 | Web Push notifications | Done | `/api/notifications/push.ts` + subscribe.ts |
+| 3 | Email notifications | Done | `/api/notifications/email.ts` - Gmail API ready |
+| 3 | Due date checker cron | Done | `/api/cron/check-due-dates.ts` - daily at 9 AM |
+| 3 | Database: notifications | Done | push_subscriptions, notification_preferences, notification_log |
+| 3 | Database: versioning | Done | supersedes_id, is_latest, statement_period columns |
+| **4** | **Memory System** | **Done** | `/api/memory/index.js` - conversation persistence + fact extraction |
+| **4** | **Document Manage API** | **Done** | `/api/documents/manage.js` - analyze, accounting, split, combine |
+| **4** | **PDF Processing** | **Done** | pdf-lib installed - split/combine/extract pages |
+| **4** | **VaultChat History** | **Done** | Session persistence, history panel, facts badge |
+| **4** | **Database: memory** | **Done** | vault_chat_sessions, vault_chat_messages, learned_facts |
 
 ### Documents in Supabase (34 total)
 | Folder | Count | Contents |
@@ -350,7 +358,6 @@ Lisa can tap dates to mark Office/WFH. When saved:
 |----------|---------|
 | `POST /api/claude/parse` | AI document parsing with vision |
 | `POST /api/claude/query` | Natural language Q&A with RAG + **auto document analysis** |
-| `POST /api/documents/analyze` | Deep PDF content analysis with Claude Vision |
 | `GET /api/documents/list` | List all documents with metadata |
 | `POST /api/documents/cleanup` | Find/remove duplicates, sync file paths |
 | `GET /api/documents/details` | Get document details + signed download URL |
@@ -358,6 +365,110 @@ Lisa can tap dates to mark Office/WFH. When saved:
 | `GET/POST/DELETE /api/notifications/subscribe` | Manage push subscriptions |
 | `POST /api/notifications/email` | Send email via Gmail API |
 | `GET /api/cron/check-due-dates` | Daily due date checker (Vercel Cron) |
+| **NEW** `POST /api/documents/manage?action=...` | Consolidated document operations (see below) |
+| **NEW** `GET/POST /api/memory?action=...` | Conversation memory system (see below) |
+
+---
+
+## Document Intelligence System (Sprint 4 - Dec 27, 2024)
+
+### Memory System - Conversation Persistence
+The VaultChat now remembers conversations and learns facts from interactions:
+
+**Chat History Panel:**
+- Click 📋 to view previous conversations
+- Click ✨ to start new conversation
+- Sessions auto-saved to database
+- Facts extracted and stored for future recall
+- 🧠 badge shows facts learned in current session
+
+**Database Tables:**
+| Table | Purpose |
+|-------|---------|
+| `vault_chat_sessions` | Conversation sessions with title, summary, topics |
+| `vault_chat_messages` | Individual messages with document references |
+| `learned_facts` | Auto-extracted facts (amounts, dates, account numbers) |
+| `vault_user_preferences` | Learned user preferences over time |
+| `document_history` | Audit trail for document changes |
+| `document_audit_results` | Page-by-page analysis storage |
+
+### Document Management API
+**Endpoint:** `POST /api/documents/manage?action=<action>`
+
+| Action | Description |
+|--------|-------------|
+| `analyze` | Claude Vision analysis of single document (replaces old analyze.js) |
+| `accounting` | Full document inventory by category, property, person + alerts |
+| `audit` | Page-by-page analysis of all documents (may timeout on Hobby plan) |
+| `split` | Split PDF into pages or ranges using pdf-lib |
+| `combine` | Merge multiple PDFs into one |
+| `reorganize` | Execute corrections from audit report |
+
+**Example - Accounting:**
+```javascript
+fetch('/api/documents/manage?action=accounting')
+// Returns: { by_category, by_property, by_person, alerts, recent_uploads }
+```
+
+**Example - Analyze Single Document:**
+```javascript
+fetch('/api/documents/manage?action=analyze', {
+  method: 'POST',
+  body: JSON.stringify({ document_id: 'uuid', extract_full_text: true })
+})
+```
+
+### Memory API
+**Endpoint:** `GET/POST /api/memory?action=<action>`
+
+| Action | Description |
+|--------|-------------|
+| `save` | Save conversation exchange + extract facts |
+| `recall` | Search facts, sessions, documents by query |
+| `facts` | List, verify, delete, or add facts |
+| `sessions` | List, get, delete, or summarize chat sessions |
+
+**Example - Save Conversation:**
+```javascript
+fetch('/api/memory?action=save', {
+  method: 'POST',
+  body: JSON.stringify({
+    session_id: null,  // Creates new session if null
+    user_message: "What's my mortgage balance?",
+    assistant_response: "Your 1808 Manning mortgage balance is $380,801.18",
+    documents_discussed: [{ id: 'uuid', filename: 'CrossCountry.pdf' }],
+    create_session: true
+  })
+})
+// Returns: { session_id, facts_extracted: 2 }
+```
+
+**Example - Recall Information:**
+```javascript
+fetch('/api/memory?action=recall&query=mortgage&entity_type=property')
+// Returns: { facts, sessions, documents } matching query
+```
+
+### PDF Processing with pdf-lib
+The system can now manipulate PDFs:
+- **Split:** Extract pages from bundle files
+- **Combine:** Merge related documents
+- **Extract:** Create new PDFs from page ranges
+
+```javascript
+// Split pages 1-5 and 10-15 into separate PDFs
+fetch('/api/documents/manage?action=split', {
+  method: 'POST',
+  body: JSON.stringify({
+    document_id: 'uuid',
+    ranges: [[1, 5], [10, 15]]
+  })
+})
+```
+
+### Known Limitations
+- **Full Audit Timeout:** Analyzing all 149 documents exceeds Vercel Hobby 60s limit
+- **Workaround:** Use `analyze` action for single documents, or upgrade to Vercel Pro (300s limit)
 
 ### Document Analysis Capability (NEW - Dec 26)
 The VaultChat agent can now **read PDF contents** using Claude Vision:
@@ -390,19 +501,24 @@ GOOGLE_REFRESH_TOKEN=<from OAuth Playground>
 GMAIL_SENDER_ADDRESS=familyvault.notifications@gmail.com
 ```
 
-### Next Steps (Sprint 4)
-1. **Run new SQL** - Execute updated `supabase-setup.sql` for notification tables
-2. **Gmail Setup** - Create Gmail account + configure OAuth
-3. **Auto-parsing on upload** - Modify DocumentUploader to call /api/claude/parse
-4. **Version detection** - Auto-detect when new statement replaces old
-5. **Mobile optimization** - Test PWA on iOS/Android
+### Next Steps (Sprint 5)
+1. **Batch Audit Solution** - Implement background job queue or upgrade to Vercel Pro for full document audit
+2. **Bundle Splitting** - Test PDF split on "many things.pdf" and "Coty POA" bundle files
+3. **Gmail Setup** - Create Gmail account + configure OAuth for email notifications
+4. **Auto-parsing on upload** - Modify DocumentUploader to call /api/claude/parse
+5. **Version detection** - Auto-detect when new statement replaces old
+6. **Mobile optimization** - Test PWA on iOS/Android
 
-### Key Files Modified This Session (Sprint 3)
+### Key Files Modified (Sprint 3-4)
 ```
 api/
 ├── claude/
 │   ├── parse.ts (AI document parsing)
 │   └── query.ts (natural language Q&A)
+├── documents/
+│   └── manage.js (NEW - audit, split, combine, accounting, analyze)
+├── memory/
+│   └── index.js (NEW - save, recall, facts, sessions)
 ├── notifications/
 │   ├── push.ts (web push)
 │   ├── subscribe.ts (subscription management)
@@ -411,23 +527,23 @@ api/
     └── check-due-dates.ts (daily cron job)
 
 src/components/vault/
-├── VaultChat.tsx (NEW - Q&A interface)
-├── UrgentItems.tsx (NEW - due date widget)
-└── index.ts (updated exports)
+├── VaultChat.tsx (UPDATED - session persistence, history panel, facts badge)
+├── UrgentItems.tsx (due date widget)
+└── index.ts (exports)
 
 src/lib/notifications.ts (push subscription management)
 src/pages/Dashboard.tsx (Ask Vault tab + Overview widgets)
-src/index.css (VaultChat + UrgentItems styles)
+src/index.css (VaultChat + UrgentItems + chat history styles)
 public/service-worker.js (push notification handling)
-supabase-setup.sql (notification + version tracking tables)
-vercel.json (cron config + API routing)
-.env (VAPID keys added)
+supabase-setup.sql (UPDATED - memory tables added)
+vercel.json (cache control headers + cron config)
+package.json (pdf-lib dependency added)
 ```
 
 ### Known Issues
 - Gmail API requires OAuth setup before email notifications work
-- SUPABASE_SERVICE_KEY needs to be added to Vercel environment
-- Run updated SQL in Supabase to create notification tables
+- Full document audit (all 149 files) exceeds Vercel Hobby 60s timeout - use single doc analyze instead
+- Bundle files (Coty POA 45MB, many things.pdf) ready for splitting but not yet processed
 
 ### To Resume Development
 1. `cd "/mnt/c/Users/dyoun/The Young/FamilyFinanceHub"`
